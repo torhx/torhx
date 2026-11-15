@@ -1,0 +1,19 @@
+version: 3
+workdir: pkg
+
+allow:
+  depOnAnyVendor: true   # third-party libs (including Talav) are unrestricted
+  ignoreNotFoundComponents: true   # a layer may have no modules yet
+
+# One component per layer; every module under a layer belongs to it.
+components:
+  component: { in: component/** }   # pure libraries and domain logic, no DI
+  fx:        { in: fx/** }          # Uber FX wiring for components
+  module:    { in: module/** }      # application modules
+
+deps:
+  component: { mayDependOn: [component] }
+  fx:        { mayDependOn: [fx, component] }
+  module:    { mayDependOn: [module, fx, component] }
+
+excludeFiles: ['^.*_test\.go$']   # tests can break the rule
