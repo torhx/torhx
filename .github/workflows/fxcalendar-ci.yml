@@ -1,0 +1,33 @@
+name: "fxcalendar-ci"
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "feat**"
+      - "fix**"
+      - "hotfix**"
+      - "chore**"
+      - "main"
+    paths:
+      - "pkg/fx/fxcalendar/**.go"
+      - "pkg/fx/fxcalendar/go.mod"
+      - "pkg/fx/fxcalendar/go.sum"
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+    branches:
+      - main
+    paths:
+      - "pkg/fx/fxcalendar/**.go"
+      - "pkg/fx/fxcalendar/go.mod"
+      - "pkg/fx/fxcalendar/go.sum"
+
+jobs:
+  ci:
+    uses: ./.github/workflows/common-ci.yml
+    secrets: inherit
+    with:
+      module: "pkg/fx/fxcalendar"

@@ -1,3 +1,6 @@
 go 1.27.0
 
-use ./pkg/component/calendar
+use (
+	./pkg/component/calendar
+	./pkg/fx/fxcalendar
+)
