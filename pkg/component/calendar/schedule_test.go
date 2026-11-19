@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/talav/civil"
+	"github.com/talav/country"
 	"github.com/torhx/exchange"
 
 	"github.com/torhx/torhx/pkg/component/calendar"
@@ -67,9 +68,9 @@ func mustBuild(t *testing.T, e exchange.Exchange, from, to string, schedule cale
 	return c
 }
 
-// mustVenue returns an exchange in the given time zone, for zones no
-// built-in exchange keeps.
-func mustVenue(t *testing.T, timeZone string) exchange.Exchange {
+// mustVenue returns an exchange in the given country and time zone, for zones
+// no built-in exchange keeps.
+func mustVenue(t *testing.T, c country.Country, timeZone string) exchange.Exchange {
 	t.Helper()
 
 	code, err := exchange.NewCode("TEST")
@@ -78,7 +79,7 @@ func mustVenue(t *testing.T, timeZone string) exchange.Exchange {
 	wholeDay, err := exchange.NewSession(civil.Time{}, civil.Time{})
 	require.NoError(t, err)
 
-	e, err := exchange.NewExchange(code, "Test venue", timeZone, everyDay(), []exchange.Session{wholeDay})
+	e, err := exchange.NewExchange(code, "Test venue", c, timeZone, everyDay(), []exchange.Session{wholeDay})
 	require.NoError(t, err)
 
 	return e
@@ -518,17 +519,17 @@ func TestBuildTradingCalendarDaysAroundAClockChange(t *testing.T) {
 			wantOpenUTC: "2026-03-08 22:00", wantDuration: 23 * time.Hour,
 		},
 		{
-			name: "whole date the clock goes back", venue: mustVenue(t, "America/New_York"),
+			name: "whole date the clock goes back", venue: mustVenue(t, country.US, "America/New_York"),
 			weekdays: everyDay(), hours: wholeDate, date: "2026-11-01",
 			wantOpenUTC: "2026-11-01 04:00", wantDuration: 25 * time.Hour,
 		},
 		{
-			name: "whole date the clock goes forward", venue: mustVenue(t, "America/New_York"),
+			name: "whole date the clock goes forward", venue: mustVenue(t, country.US, "America/New_York"),
 			weekdays: everyDay(), hours: wholeDate, date: "2026-03-08",
 			wantOpenUTC: "2026-03-08 05:00", wantDuration: 23 * time.Hour,
 		},
 		{
-			name: "whole date the clock goes back by half an hour", venue: mustVenue(t, "Australia/Lord_Howe"),
+			name: "whole date the clock goes back by half an hour", venue: mustVenue(t, country.AU, "Australia/Lord_Howe"),
 			weekdays: everyDay(), hours: wholeDate, date: "2026-04-05",
 			wantOpenUTC: "2026-04-04 13:00", wantDuration: 24*time.Hour + 30*time.Minute,
 		},
@@ -580,7 +581,7 @@ func TestBuildTradingCalendarMidnightIsTheStartOfTheDate(t *testing.T) {
 
 	// Santiago moves its clock forward at midnight on Sunday 2026-09-06, so
 	// that date has no 00:00: it starts at 01:00.
-	venue := mustVenue(t, "America/Santiago")
+	venue := mustVenue(t, country.CL, "America/Santiago")
 	week := mustWeek(t, "2026-01-01", everyDay(), mustHours(t, calendar.SessionKindRegular, "00:00", "00:00", 0))
 
 	c := mustBuild(t, venue, "2026-09-04", "2026-09-08", week, nil)
