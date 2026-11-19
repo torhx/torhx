@@ -1,0 +1,33 @@
+name: "calendar-ci"
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "feat**"
+      - "fix**"
+      - "hotfix**"
+      - "chore**"
+      - "main"
+    paths:
+      - "pkg/component/calendar/**.go"
+      - "pkg/component/calendar/go.mod"
+      - "pkg/component/calendar/go.sum"
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+    branches:
+      - main
+    paths:
+      - "pkg/component/calendar/**.go"
+      - "pkg/component/calendar/go.mod"
+      - "pkg/component/calendar/go.sum"
+
+jobs:
+  ci:
+    uses: ./.github/workflows/common-ci.yml
+    secrets: inherit
+    with:
+      module: "pkg/component/calendar"
