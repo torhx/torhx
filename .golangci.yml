@@ -62,6 +62,12 @@ linters:
     - unused
     - usestdlibvars
     - whitespace
+  exclusions:
+    rules:
+      # Test tables repeat case names and sample values on purpose.
+      - path: _test\.go
+        linters:
+          - goconst
 
 formatters:
   enable:
