@@ -64,7 +64,7 @@ func TestBuiltInXNYSCoverage(t *testing.T) {
 
 	assert.Equal(t, "XNYS", xnys.Exchange().Code().String())
 	assert.Equal(t, parseDate(t, "2000-01-01"), from)
-	assert.Equal(t, parseDate(t, "2028-12-31"), to)
+	assert.Equal(t, parseDate(t, "2030-12-31"), to)
 }
 
 func TestBuiltInXNYSDays(t *testing.T) {
@@ -135,6 +135,8 @@ func TestBuiltInXNYSTradingDaysPerYear(t *testing.T) {
 		{year: 2020, want: 253},
 		{year: 2025, want: 250},
 		{year: 2028, want: 251},
+		{year: 2029, want: 251},
+		{year: 2030, want: 251},
 	}
 
 	for _, tt := range tests {

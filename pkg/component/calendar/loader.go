@@ -26,8 +26,8 @@ type calendarFile struct {
 	// From is the first date the calendar covers.
 	From civil.Date `json:"from"`
 
-	// To is the last date the calendar covers: the last one the exchange has
-	// published its holidays for.
+	// To is the last date the calendar covers. Its latest years may be
+	// projected from the exchange's rules instead of published by it.
 	To civil.Date `json:"to"`
 
 	// Exceptions are the dates whose sessions differ from the exchange's
