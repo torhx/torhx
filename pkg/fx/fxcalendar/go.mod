@@ -5,7 +5,7 @@ go 1.27.0
 require (
 	github.com/stretchr/testify v1.12.1
 	github.com/torhx/exchange v0.2.0
-	github.com/torhx/torhx/pkg/component/calendar v0.1.0
+	github.com/torhx/torhx/pkg/component/calendar v0.1.1
 	go.uber.org/fx v1.24.0
 )
 
