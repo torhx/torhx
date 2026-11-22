@@ -2,5 +2,6 @@ go 1.27.0
 
 use (
 	./pkg/component/calendar
+	./pkg/component/marketevent
 	./pkg/fx/fxcalendar
 )
