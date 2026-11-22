@@ -7,11 +7,11 @@ import (
 	"github.com/torhx/identifier"
 )
 
-// An Event is an event of any type: EconomicEvent, CompanyEvent, or a
-// program's type that embeds one of them, which is how a program's type
-// implements Event. An event's Timing, Kind and Subject must return the
-// same values on every call and be safe to call concurrently, as the
-// built-in types' are.
+// An Event is an event of any type: EconomicEvent, Earnings, Dividend,
+// Split, or a program's type that embeds EconomicEvent or CompanyEvent,
+// which is how a program's type implements Event. An event's Timing, Kind
+// and Subject must return the same values on every call and be safe to call
+// concurrently, as the built-in types' are.
 type Event interface {
 	// Timing returns when the event happens.
 	Timing() Timing
@@ -101,7 +101,8 @@ func (e EconomicEvent) validate() error {
 
 // A CompanyEvent is the common part of a program's own type of company
 // event: the stock it is about, by its composite FIGI, its timing and its
-// kind, such as "buyback". The program's type embeds it and adds fields.
+// kind, such as "buyback". The program's type embeds it and adds fields; the
+// built-in types have a stock, a timing and a kind of their own.
 //
 // A CompanyEvent comes only from NewCompanyEvent. The zero value is not an
 // event.
