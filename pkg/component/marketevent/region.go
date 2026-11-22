@@ -1,6 +1,7 @@
 package marketevent
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 
@@ -75,4 +76,15 @@ func (r Region) validate() error {
 	}
 
 	return nil
+}
+
+// compare orders regions: countries before currency zones, each by its
+// code. It is zero only for equal regions, so it also tells two currencies
+// of one code apart, by their decimal places.
+func (r Region) compare(other Region) int {
+	return cmp.Or(
+		cmp.Compare(r.currency.Code(), other.currency.Code()),
+		cmp.Compare(r.currency.Decimals(), other.currency.Decimals()),
+		cmp.Compare(r.country.Alpha2(), other.country.Alpha2()),
+	)
 }

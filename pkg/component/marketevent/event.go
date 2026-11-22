@@ -9,9 +9,11 @@ import (
 
 // An Event is an event of any type: EconomicEvent, Earnings, Dividend,
 // Split, or a program's type that embeds EconomicEvent or CompanyEvent,
-// which is how a program's type implements Event. An event's Timing, Kind
-// and Subject must return the same values on every call and be safe to call
-// concurrently, as the built-in types' are.
+// which is how a program's type implements Event. Since such a type can
+// embed a zero value or replace a method, NewEvents checks every event it
+// is given. An event's Timing, Kind and Subject must return the same values
+// on every call and be safe to call concurrently, as the built-in types'
+// are.
 type Event interface {
 	// Timing returns when the event happens.
 	Timing() Timing

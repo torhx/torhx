@@ -1,6 +1,7 @@
 package marketevent
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 
@@ -77,4 +78,14 @@ func (s Subject) validate() error {
 	}
 
 	return nil
+}
+
+// compare orders subjects: regions before stocks, regions as Region orders
+// them and stocks by their FIGI. It is zero only for equal subjects.
+func (s Subject) compare(other Subject) int {
+	if c := cmp.Compare(s.stock.String(), other.stock.String()); c != 0 {
+		return c
+	}
+
+	return s.region.compare(other.region)
 }
