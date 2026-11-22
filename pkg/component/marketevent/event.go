@@ -8,12 +8,12 @@ import (
 )
 
 // An Event is an event of any type: EconomicEvent, Earnings, Dividend,
-// Split, or a program's type that embeds EconomicEvent or CompanyEvent,
-// which is how a program's type implements Event. Since such a type can
-// embed a zero value or replace a method, NewEvents checks every event it
-// is given. An event's Timing, Kind and Subject must return the same values
-// on every call and be safe to call concurrently, as the built-in types'
-// are.
+// Split, or a program's own type. A program's type has the three methods
+// itself, or embeds EconomicEvent or CompanyEvent, which have them, and adds
+// fields. Since a program's type can return a zero timing or subject or an
+// empty kind, NewEvents checks every event it is given. An event's Timing,
+// Kind and Subject must return the same values on every call and be safe to
+// call concurrently, as the built-in types' are.
 type Event interface {
 	// Timing returns when the event happens.
 	Timing() Timing
@@ -23,17 +23,13 @@ type Event interface {
 
 	// Subject returns what the event is about: a region or a stock.
 	Subject() Subject
-
-	// event keeps events to the types of this package and the types that
-	// embed them, so that every event's subject is a region or a stock.
-	event()
 }
 
 // An EconomicEvent is a scheduled economic event, such as a release of the
 // US CPI: its region, its timing, and its kind, such as "CPI", with a detail
 // that narrows it. Kinds and details are Torhx's own names, onto which each
 // source's names are mapped, so an event reads the same whatever its source.
-// A program's own type of economic event embeds it and adds fields.
+// A program's own type of economic event can embed it and add fields.
 //
 // An EconomicEvent comes only from NewEconomicEvent. The zero value is not
 // an event.
@@ -82,8 +78,6 @@ func (e EconomicEvent) Kind() string { return e.kind }
 // Detail returns what narrows the kind, such as "advance" for a GDP
 // estimate, or "" when nothing does.
 func (e EconomicEvent) Detail() string { return e.detail }
-
-func (e EconomicEvent) event() {}
 
 func (e EconomicEvent) validate() error {
 	if !e.region.IsValid() {
@@ -144,8 +138,6 @@ func (e CompanyEvent) Timing() Timing { return e.timing }
 
 // Kind returns the kind of event, such as "buyback".
 func (e CompanyEvent) Kind() string { return e.kind }
-
-func (e CompanyEvent) event() {}
 
 func (e CompanyEvent) validate() error {
 	if !e.stock.IsValid() {

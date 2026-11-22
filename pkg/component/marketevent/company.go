@@ -45,8 +45,6 @@ func (e Earnings) Timing() Timing { return e.timing }
 // Kind returns "earnings".
 func (e Earnings) Kind() string { return "earnings" }
 
-func (e Earnings) event() {}
-
 func (e Earnings) validate() error {
 	if !e.stock.IsValid() {
 		return errors.New("stock is missing")
@@ -105,8 +103,6 @@ func (d Dividend) Kind() string { return "dividend" }
 
 // Amount returns the amount per share, in the currency of the stock's price.
 func (d Dividend) Amount() float64 { return d.amount }
-
-func (d Dividend) event() {}
 
 func (d Dividend) validate() error {
 	if !d.stock.IsValid() {
@@ -170,8 +166,6 @@ func (s Split) Kind() string { return "split" }
 // Factor returns the number that prices before the ex-date are multiplied
 // by.
 func (s Split) Factor() float64 { return s.factor }
-
-func (s Split) event() {}
 
 func (s Split) validate() error {
 	if !s.stock.IsValid() {

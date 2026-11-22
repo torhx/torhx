@@ -199,8 +199,8 @@ type Selection []Event
 // Of returns the events of type T, as T values. For a concrete T, it keeps
 // the events whose dynamic type is exactly T, so Of[Auction] and
 // Of[*Auction] differ, and Of[EconomicEvent] leaves out a program's types
-// that embed EconomicEvent. For an interface T, which embeds Event, it keeps
-// every event that implements T.
+// that embed EconomicEvent. For an interface T, it keeps every event that
+// implements T.
 func (s Selection) Of[T Event]() iter.Seq[T] {
 	return func(yield func(T) bool) {
 		for _, e := range s {

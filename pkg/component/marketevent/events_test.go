@@ -385,6 +385,20 @@ func TestNarrowedReadsByDate(t *testing.T) {
 	assertSelection(t, s.all(), s.events.Between(mustDate(t, firstDay), mustDate(t, lastDay)))
 }
 
+func TestEventsReadATypeThatEmbedsNothing(t *testing.T) {
+	t.Parallel()
+
+	day := mustDate(t, busyDay)
+	aapl := mustStockSubject(t, aaplFIGI)
+	expiry := lockup{subject: aapl, timing: mustDateTiming(t, busyDay)}
+
+	events, err := marketevent.NewEvents([]marketevent.Event{expiry}, day, day)
+	require.NoError(t, err)
+
+	assert.True(t, events.For(aapl).Has(day, "lockup expiry"))
+	assert.Equal(t, []lockup{expiry}, slices.Collect(events.Find(day).Of[lockup]()))
+}
+
 func TestSelectionOf(t *testing.T) {
 	t.Parallel()
 

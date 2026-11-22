@@ -5,8 +5,9 @@
 // kind, such as "CPI" or "earnings"; and what it is about, by its [Subject]:
 // a [Region] for an economic event, a stock for a company event.
 // [EconomicEvent] is every economic event, and [Earnings], [Dividend] and
-// [Split] are the built-in company events. A program's own type of event
-// embeds [EconomicEvent] or [CompanyEvent] and adds fields.
+// [Split] are the built-in company events. A program's own type of event has
+// the three methods of [Event] itself, or embeds [EconomicEvent] or
+// [CompanyEvent] and adds fields.
 //
 // A [Timing] is an exact instant, or a date that may carry a [Flag] for
 // before the market opens or after it closes. A flag is what the event's

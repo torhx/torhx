@@ -38,6 +38,26 @@ type buyback struct {
 	shares float64
 }
 
+// lockup is a program's own type of event that embeds neither built-in
+// type and has the methods of an Event itself: the end of a lock-up on a
+// stock's shares.
+type lockup struct {
+	// subject is the stock whose shares the lock-up holds.
+	subject marketevent.Subject
+
+	// timing is when the lock-up ends.
+	timing marketevent.Timing
+}
+
+// Timing returns when the lock-up ends.
+func (l lockup) Timing() marketevent.Timing { return l.timing }
+
+// Kind returns "lockup expiry".
+func (l lockup) Kind() string { return "lockup expiry" }
+
+// Subject returns the stock whose shares the lock-up holds.
+func (l lockup) Subject() marketevent.Subject { return l.subject }
+
 func TestNewEconomicEvent(t *testing.T) {
 	t.Parallel()
 
@@ -168,6 +188,12 @@ func TestProgramTypeIsAnEvent(t *testing.T) {
 			name:        "embeds a company event",
 			event:       buyback{CompanyEvent: company, shares: 1e6},
 			wantKind:    "buyback",
+			wantSubject: mustStockSubject(t, aaplFIGI),
+		},
+		{
+			name:        "has the methods itself",
+			event:       lockup{subject: mustStockSubject(t, aaplFIGI), timing: timing},
+			wantKind:    "lockup expiry",
 			wantSubject: mustStockSubject(t, aaplFIGI),
 		},
 	}

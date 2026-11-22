@@ -10,7 +10,7 @@ Scheduled market events: economic releases, company events and a program's own. 
 | `Earnings` | An earnings report on a stock. | `earnings` |
 | `Dividend` | A cash dividend with its amount per share, dated by its ex-date. | `dividend` |
 | `Split` | A split with the factor that earlier prices are multiplied by, dated by its ex-date. | `split` |
-| A program's own | A type that embeds `EconomicEvent` or `CompanyEvent` and adds fields. | Its own. |
+| A program's own | Any type with the `Timing`, `Kind` and `Subject` methods of `Event`. Embedding `EconomicEvent` or `CompanyEvent` gives a type all three. | Its own. |
 
 An event's subject is a region or a stock. A region is a country, or a currency zone named by its currency, as `EUR` names the euro area. A stock is named by its composite FIGI.
 
