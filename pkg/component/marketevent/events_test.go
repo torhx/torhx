@@ -112,26 +112,27 @@ func mustSchedule(t *testing.T) schedule {
 // all returns every event of the schedule in the order Events keeps: by
 // date, then regions before stocks and countries before currency zones, each
 // by its code, then as given.
-func (s schedule) all() marketevent.Selection {
-	return marketevent.Selection{
+func (s schedule) all() []marketevent.Event {
+	return []marketevent.Event{
 		s.aaplDividend,
 		s.caCPI, s.usCPI, s.ecbDecision, s.aaplEarnings, s.aaplBuyback, s.nvdaEarnings,
 		s.usAuction, s.usGDP,
 	}
 }
 
-// assertSelection asserts that got holds the events of want, in order. A
-// read that finds nothing may return an empty Selection or a nil one.
-func assertSelection(t *testing.T, want, got marketevent.Selection) {
+// assertEvents asserts that got holds the events of want, in order.
+func assertEvents(t *testing.T, want []marketevent.Event, got marketevent.Events) {
 	t.Helper()
 
+	assert.Equal(t, len(want), got.Len())
+
 	if len(want) == 0 {
-		assert.Empty(t, got)
+		assert.Empty(t, slices.Collect(got.All()))
 
 		return
 	}
 
-	assert.Equal(t, want, got)
+	assert.Equal(t, want, slices.Collect(got.All()))
 }
 
 // subjectless is a program's type that replaces Subject with one that
@@ -165,10 +166,10 @@ func TestNewEventsKeepsTheSlice(t *testing.T) {
 	events, err := marketevent.NewEvents(given, mustDate(t, firstDay), mustDate(t, lastDay))
 	require.NoError(t, err)
 
-	want := marketevent.Selection{s.aaplDividend, s.usGDP, s.usGDP}
+	want := []marketevent.Event{s.aaplDividend, s.usGDP, s.usGDP}
 
-	assert.Equal(t, want, marketevent.Selection(given))
-	assert.Equal(t, want, events.Between(mustDate(t, firstDay), mustDate(t, lastDay)))
+	assert.Equal(t, want, given)
+	assertEvents(t, want, events)
 }
 
 func TestNewEventsRejects(t *testing.T) {
@@ -240,10 +241,44 @@ func TestNewEventsRejects(t *testing.T) {
 func TestEventsCoverage(t *testing.T) {
 	t.Parallel()
 
-	from, to := mustSchedule(t).events.Coverage()
+	s := mustSchedule(t)
+	us := mustRegionSubject(t, mustCountryRegion(t, country.US))
+	first := mustDate(t, firstDay)
+	last := mustDate(t, lastDay)
+	dividend := mustDate(t, dividendDay)
+	busy := mustDate(t, busyDay)
 
-	assert.Equal(t, mustDate(t, firstDay), from)
-	assert.Equal(t, mustDate(t, lastDay), to)
+	tests := []struct {
+		name     string
+		events   marketevent.Events
+		wantFrom civil.Date
+		wantTo   civil.Date
+	}{
+		{name: "as built", events: s.events, wantFrom: first, wantTo: last},
+		{name: "a subject", events: s.events.For(us), wantFrom: first, wantTo: last},
+		{name: "kinds", events: s.events.OfKind("CPI"), wantFrom: first, wantTo: last},
+		{name: "a date", events: s.events.On(busy), wantFrom: busy, wantTo: busy},
+		{name: "a range", events: s.events.Between(dividend, busy), wantFrom: dividend, wantTo: busy},
+		{
+			name:     "a range wider than the coverage",
+			events:   s.events.Between(mustDate(t, "2020-01-01"), busy),
+			wantFrom: first,
+			wantTo:   busy,
+		},
+		{name: "a date outside the coverage", events: s.events.On(mustDate(t, "2022-02-10"))},
+		{name: "a range that ends before it starts", events: s.events.Between(last, first)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			from, to := tt.events.Coverage()
+
+			assert.Equal(t, tt.wantFrom, from)
+			assert.Equal(t, tt.wantTo, to)
+		})
+	}
 }
 
 func TestZeroEvents(t *testing.T) {
@@ -258,37 +293,27 @@ func TestZeroEvents(t *testing.T) {
 
 	assert.False(t, from.IsValid())
 	assert.False(t, to.IsValid())
-	assert.False(t, events.Has(first))
-	assert.Empty(t, events.Find(first))
-	assert.Empty(t, events.Between(first, last))
-	assert.Empty(t, events.For(us).Between(first, last))
+	assert.False(t, events.Has())
+	assertEvents(t, nil, events)
+	assertEvents(t, nil, events.On(first))
+	assertEvents(t, nil, events.Between(first, last))
+	assertEvents(t, nil, events.For(us))
+	assertEvents(t, nil, events.OfKind("CPI"))
+	assert.Empty(t, slices.Collect(events.Of[marketevent.Dividend]()))
 }
 
-func TestEventsFindAndHas(t *testing.T) {
+func TestEventsOn(t *testing.T) {
 	t.Parallel()
 
 	s := mustSchedule(t)
 
 	tests := []struct {
-		name  string
-		date  string
-		kinds []string
-		want  marketevent.Selection
+		name string
+		date string
+		want []marketevent.Event
 	}{
-		{
-			name: "every kind, by subject",
-			date: busyDay,
-			want: marketevent.Selection{s.caCPI, s.usCPI, s.ecbDecision, s.aaplEarnings, s.aaplBuyback, s.nvdaEarnings},
-		},
-		{name: "one kind", date: busyDay, kinds: []string{"CPI"}, want: marketevent.Selection{s.caCPI, s.usCPI}},
-		{
-			name:  "any of several kinds",
-			date:  busyDay,
-			kinds: []string{"earnings", "CPI"},
-			want:  marketevent.Selection{s.caCPI, s.usCPI, s.aaplEarnings, s.nvdaEarnings},
-		},
-		{name: "a kind the date lacks", date: busyDay, kinds: []string{"FOMC"}},
-		{name: "a date with one event", date: dividendDay, want: marketevent.Selection{s.aaplDividend}},
+		{name: "a date with several events, by subject", date: busyDay, want: s.all()[1:7]},
+		{name: "a date with one event", date: dividendDay, want: []marketevent.Event{s.aaplDividend}},
 		{name: "a date without events", date: "2021-02-06"},
 		{name: "a date outside the coverage", date: "2022-02-10"},
 	}
@@ -297,10 +322,7 @@ func TestEventsFindAndHas(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			date := mustDate(t, tt.date)
-
-			assertSelection(t, tt.want, s.events.Find(date, tt.kinds...))
-			assert.Equal(t, len(tt.want) > 0, s.events.Has(date, tt.kinds...))
+			assertEvents(t, tt.want, s.events.On(mustDate(t, tt.date)))
 		})
 	}
 }
@@ -315,12 +337,12 @@ func TestEventsBetween(t *testing.T) {
 		name string
 		from string
 		to   string
-		want marketevent.Selection
+		want []marketevent.Event
 	}{
 		{name: "the coverage", from: firstDay, to: lastDay, want: all},
 		{name: "wider than the coverage", from: "2020-01-01", to: "2022-12-31", want: all},
 		{name: "both ends included", from: dividendDay, to: busyDay, want: all[:7]},
-		{name: "one date", from: auctionDay, to: auctionDay, want: marketevent.Selection{s.usAuction, s.usGDP}},
+		{name: "one date", from: auctionDay, to: auctionDay, want: []marketevent.Event{s.usAuction, s.usGDP}},
 		{name: "dates without events", from: "2021-04-01", to: "2021-04-30"},
 		{name: "from after to", from: lastDay, to: firstDay},
 	}
@@ -329,7 +351,7 @@ func TestEventsBetween(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			assertSelection(t, tt.want, s.events.Between(mustDate(t, tt.from), mustDate(t, tt.to)))
+			assertEvents(t, tt.want, s.events.Between(mustDate(t, tt.from), mustDate(t, tt.to)))
 		})
 	}
 }
@@ -346,43 +368,105 @@ func TestEventsFor(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		reader marketevent.Reader
-		want   marketevent.Selection
+		events marketevent.Events
+		want   []marketevent.Event
 	}{
-		{name: "a stock", reader: s.events.For(aapl), want: marketevent.Selection{s.aaplDividend, s.aaplEarnings, s.aaplBuyback}},
-		{name: "a country", reader: s.events.For(us), want: marketevent.Selection{s.usCPI, s.usAuction, s.usGDP}},
-		{name: "a currency zone", reader: s.events.For(euroArea), want: marketevent.Selection{s.ecbDecision}},
-		{name: "a subject without events", reader: s.events.For(japan)},
-		{name: "the zero subject", reader: s.events.For(marketevent.Subject{})},
-		{name: "the same subject twice", reader: s.events.For(us).For(us), want: marketevent.Selection{s.usCPI, s.usAuction, s.usGDP}},
-		{name: "two subjects", reader: s.events.For(us).For(canada)},
+		{name: "a stock", events: s.events.For(aapl), want: []marketevent.Event{s.aaplDividend, s.aaplEarnings, s.aaplBuyback}},
+		{name: "a country", events: s.events.For(us), want: []marketevent.Event{s.usCPI, s.usAuction, s.usGDP}},
+		{name: "a currency zone", events: s.events.For(euroArea), want: []marketevent.Event{s.ecbDecision}},
+		{name: "a subject without events", events: s.events.For(japan)},
+		{name: "the zero subject", events: s.events.For(marketevent.Subject{})},
+		{name: "the same subject twice", events: s.events.For(us).For(us), want: []marketevent.Event{s.usCPI, s.usAuction, s.usGDP}},
+		{name: "two subjects", events: s.events.For(us).For(canada)},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			assertSelection(t, tt.want, tt.reader.Between(mustDate(t, firstDay), mustDate(t, lastDay)))
+			assertEvents(t, tt.want, tt.events)
 		})
 	}
 }
 
-func TestNarrowedReadsByDate(t *testing.T) {
+func TestEventsOfKindAndHas(t *testing.T) {
 	t.Parallel()
 
 	s := mustSchedule(t)
-	busy := mustDate(t, busyDay)
-	aapl := s.events.For(mustStockSubject(t, aaplFIGI))
-	nvda := s.events.For(mustStockSubject(t, nvdaFIGI))
 
-	assert.True(t, nvda.Has(busy, "earnings"))
-	assert.False(t, nvda.Has(busy, "dividend"))
-	assert.False(t, nvda.Has(mustDate(t, dividendDay)))
-	assertSelection(t, marketevent.Selection{s.aaplEarnings}, aapl.Find(busy, "earnings"))
-	assertSelection(t, marketevent.Selection{s.aaplEarnings, s.aaplBuyback}, aapl.Find(busy))
+	tests := []struct {
+		name  string
+		kinds []string
+		want  []marketevent.Event
+	}{
+		{name: "one kind", kinds: []string{"CPI"}, want: []marketevent.Event{s.caCPI, s.usCPI}},
+		{
+			name:  "any of several kinds",
+			kinds: []string{"earnings", "CPI"},
+			want:  []marketevent.Event{s.caCPI, s.usCPI, s.aaplEarnings, s.nvdaEarnings},
+		},
+		{name: "a kind it lacks", kinds: []string{"FOMC"}},
+		{name: "no kinds, which is every kind", want: s.all()},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assertEvents(t, tt.want, s.events.OfKind(tt.kinds...))
+			assert.Equal(t, len(tt.want) > 0, s.events.Has(tt.kinds...))
+		})
+	}
+}
+
+func TestEventsNarrowInAnyOrder(t *testing.T) {
+	t.Parallel()
+
+	s := mustSchedule(t)
+	us := mustRegionSubject(t, mustCountryRegion(t, country.US))
+	first := mustDate(t, firstDay)
+	busy := mustDate(t, busyDay)
+	reports := []marketevent.Event{s.aaplEarnings, s.nvdaEarnings}
+
+	tests := []struct {
+		name   string
+		events marketevent.Events
+		want   []marketevent.Event
+	}{
+		{name: "a subject, then dates", events: s.events.For(us).Between(first, busy), want: []marketevent.Event{s.usCPI}},
+		{name: "dates, then a subject", events: s.events.Between(first, busy).For(us), want: []marketevent.Event{s.usCPI}},
+		{name: "a subject, then kinds", events: s.events.For(us).OfKind("GDP"), want: []marketevent.Event{s.usGDP}},
+		{name: "kinds, then a subject", events: s.events.OfKind("GDP").For(us), want: []marketevent.Event{s.usGDP}},
+		{name: "dates, then kinds", events: s.events.Between(first, busy).OfKind("earnings"), want: reports},
+		{name: "kinds, then dates", events: s.events.OfKind("earnings").Between(first, busy), want: reports},
+		{name: "all three", events: s.events.For(us).On(busy).OfKind("CPI"), want: []marketevent.Event{s.usCPI}},
+		{name: "all three, the other way", events: s.events.OfKind("CPI").On(busy).For(us), want: []marketevent.Event{s.usCPI}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assertEvents(t, tt.want, tt.events)
+		})
+	}
 
 	// Narrowing leaves the Events it narrows as it is.
-	assertSelection(t, s.all(), s.events.Between(mustDate(t, firstDay), mustDate(t, lastDay)))
+	assertEvents(t, s.all(), s.events)
+}
+
+func TestEventsHasOnADate(t *testing.T) {
+	t.Parallel()
+
+	s := mustSchedule(t)
+	nvda := s.events.For(mustStockSubject(t, nvdaFIGI))
+	busy := mustDate(t, busyDay)
+
+	assert.True(t, nvda.On(busy).Has("earnings"))
+	assert.False(t, nvda.On(busy).Has("dividend"))
+	assert.True(t, nvda.On(busy).Has())
+	assert.False(t, nvda.On(mustDate(t, dividendDay)).Has())
+	assert.True(t, s.events.On(busy).Has("FOMC", "CPI"))
 }
 
 func TestEventsReadATypeThatEmbedsNothing(t *testing.T) {
@@ -395,41 +479,43 @@ func TestEventsReadATypeThatEmbedsNothing(t *testing.T) {
 	events, err := marketevent.NewEvents([]marketevent.Event{expiry}, day, day)
 	require.NoError(t, err)
 
-	assert.True(t, events.For(aapl).Has(day, "lockup expiry"))
-	assert.Equal(t, []lockup{expiry}, slices.Collect(events.Find(day).Of[lockup]()))
+	assert.True(t, events.For(aapl).On(day).Has("lockup expiry"))
+	assert.Equal(t, []lockup{expiry}, slices.Collect(events.On(day).Of[lockup]()))
 }
 
-func TestSelectionOf(t *testing.T) {
+func TestEventsOf(t *testing.T) {
 	t.Parallel()
 
 	s := mustSchedule(t)
-	all := s.all()
 
-	assert.Equal(t, []marketevent.Dividend{s.aaplDividend}, slices.Collect(all.Of[marketevent.Dividend]()))
-	assert.Equal(t, []marketevent.Earnings{s.aaplEarnings, s.nvdaEarnings}, slices.Collect(all.Of[marketevent.Earnings]()))
+	assert.Equal(t, []marketevent.Dividend{s.aaplDividend}, slices.Collect(s.events.Of[marketevent.Dividend]()))
+	assert.Equal(t,
+		[]marketevent.Earnings{s.aaplEarnings, s.nvdaEarnings},
+		slices.Collect(s.events.Of[marketevent.Earnings]()),
+	)
 
 	// A concrete type keeps the events of exactly that type, so a program's
 	// type that embeds EconomicEvent is left out, and so is its pointer.
 	assert.Equal(t,
 		[]marketevent.EconomicEvent{s.caCPI, s.usCPI, s.ecbDecision, s.usGDP},
-		slices.Collect(all.Of[marketevent.EconomicEvent]()),
+		slices.Collect(s.events.Of[marketevent.EconomicEvent]()),
 	)
-	assert.Equal(t, []auction{s.usAuction}, slices.Collect(all.Of[auction]()))
-	assert.Empty(t, slices.Collect(all.Of[*auction]()))
+	assert.Equal(t, []auction{s.usAuction}, slices.Collect(s.events.Of[auction]()))
+	assert.Empty(t, slices.Collect(s.events.Of[*auction]()))
 
 	// An interface keeps every event that implements it.
 	assert.Equal(t,
 		[]regional{s.caCPI, s.usCPI, s.ecbDecision, s.usAuction, s.usGDP},
-		slices.Collect(all.Of[regional]()),
+		slices.Collect(s.events.Of[regional]()),
 	)
 }
 
-func TestSelectionOfStopsWithItsCaller(t *testing.T) {
+func TestEventsOfStopsWithItsCaller(t *testing.T) {
 	t.Parallel()
 
 	s := mustSchedule(t)
 
-	next, stop := iter.Pull(s.all().Of[marketevent.Earnings]())
+	next, stop := iter.Pull(s.events.Of[marketevent.Earnings]())
 	first, ok := next()
 
 	stop()

@@ -9,49 +9,28 @@ import (
 	"github.com/talav/civil"
 )
 
-// A Reader reads events: it narrows to the events about a subject, and
-// reads them by date. Code that reads events takes a Reader, so that its
-// tests can give it a Reader of their own.
-type Reader interface {
-	// For returns a new Reader of the events about subject, and leaves this
-	// one as it is. Narrowing a narrowed Reader keeps only the events about
-	// both subjects, so For(us).For(ca) reads nothing, and so does For with
-	// the zero Subject.
-	For(subject Subject) Reader
-
-	// Has reports whether date has an event of any of kinds, or of any kind
-	// when kinds is empty: whether Find would return an event.
-	Has(date civil.Date, kinds ...string) bool
-
-	// Find returns the events of date of any of kinds, or of every kind
-	// when kinds is empty, in order.
-	Find(date civil.Date, kinds ...string) Selection
-
-	// Between returns the events dated from from to to, both included, by
-	// date. It returns none when from is after to.
-	Between(from, to civil.Date) Selection
-}
-
-// Events is the Reader of a program's events, of every type. Within its
-// coverage, a date without an event has none; outside it, a read finds no
-// event, which does not mean that none happens, so a program checks
-// Coverage before it reads.
+// Events is a collection of events, of every type, and the dates it covers.
+// Narrowing it, by subject, by date or by kind, gives the Events of the
+// events that match, which narrows and reads in the same way.
+//
+// Within its coverage, a date without an event has none; outside it, a read
+// finds no event, which does not mean that none happens, so a program checks
+// Coverage where it builds its Events.
 //
 // Events holds a schedule as its events state it, and not when each event
 // became known: it cannot say what a program knew on an earlier date.
 //
-// Events borrows its storage: it keeps the slice NewEvents is given, and the
-// Selections its reads return share that memory. It never changes either
-// after NewEvents, so concurrent reads are safe while no caller changes the
-// slice, a Selection or an event. The zero value holds no events and covers
-// no date.
+// Events borrows its storage: it keeps the slice NewEvents is given and never
+// changes it afterwards, so concurrent reads are safe while no caller changes
+// the slice or an event. The zero value holds no events and covers no date.
 type Events struct {
-	// byDate holds the events in order of date, then subject. It is the
-	// slice NewEvents is given, or a part of bySubject after narrowing.
+	// byDate holds the events in order of date, then subject.
 	byDate []Event
 
-	// bySubject holds the same events in order of subject, then date, so
-	// that the events about one subject are a run in date order.
+	// bySubject holds the events in order of subject, then date, so that the
+	// events about one subject are a run in date order. After narrowing by
+	// date it also holds the events that narrowing left out, which are all
+	// dated outside from to to.
 	bySubject []Event
 
 	// from is the first date the events cover. It is the zero date only in
@@ -79,21 +58,19 @@ func NewEvents(events []Event, from, to civil.Date) (Events, error) {
 	}
 
 	slices.SortStableFunc(es.byDate, compareByDate)
-
-	// A stable sort by subject alone leaves each subject's events in the
-	// date order they already have.
-	es.bySubject = slices.Clone(es.byDate)
-	slices.SortStableFunc(es.bySubject, compareBySubject)
+	es.bySubject = sortedBySubject(es.byDate)
 
 	return es, nil
 }
 
-// Coverage returns the first and the last date the events cover. The zero
-// Events returns two zero dates.
+// Coverage returns the first and the last date the events cover. An Events
+// that covers no date, as the zero value does, returns two zero dates.
 func (es Events) Coverage() (from, to civil.Date) { return es.from, es.to }
 
-// For returns a new Reader of the events about subject.
-func (es Events) For(subject Subject) Reader {
+// For returns the events about subject. Narrowing twice keeps the events
+// about both subjects, so For(us).For(ca) holds none, and so does For with
+// the zero Subject.
+func (es Events) For(subject Subject) Events {
 	start := sort.Search(len(es.bySubject), func(i int) bool {
 		return es.bySubject[i].Subject().compare(subject) >= 0
 	})
@@ -103,15 +80,57 @@ func (es Events) For(subject Subject) Reader {
 
 	// The events about one subject are in date order, which is both orders
 	// at once.
-	about := es.bySubject[start:end:end]
+	about := dated(es.bySubject[start:end], es.from, es.to)
 
 	return Events{byDate: about, bySubject: about, from: es.from, to: es.to}
 }
 
-// Has reports whether date has an event of any of kinds, or of any kind
-// when kinds is empty.
-func (es Events) Has(date civil.Date, kinds ...string) bool {
-	for _, e := range es.between(date, date) {
+// On returns the events of date. The result covers that date alone, or no
+// date when this Events does not cover it.
+func (es Events) On(date civil.Date) Events { return es.Between(date, date) }
+
+// Between returns the events dated from from to to, both included. The
+// result covers those of the dates that this Events covers, and no date when
+// there is none, as when from is after to.
+func (es Events) Between(from, to civil.Date) Events {
+	if from.Before(es.from) {
+		from = es.from
+	}
+
+	if to.After(es.to) {
+		to = es.to
+	}
+
+	if from.After(to) {
+		return Events{}
+	}
+
+	return Events{byDate: dated(es.byDate, from, to), bySubject: es.bySubject, from: from, to: to}
+}
+
+// OfKind returns the events of any of kinds, or every event when kinds is
+// empty. It makes a new list of them, so Has is the cheaper way to ask only
+// whether there is one.
+func (es Events) OfKind(kinds ...string) Events {
+	if len(kinds) == 0 {
+		return es
+	}
+
+	var ofKind []Event
+
+	for _, e := range es.byDate {
+		if slices.Contains(kinds, e.Kind()) {
+			ofKind = append(ofKind, e)
+		}
+	}
+
+	return Events{byDate: ofKind, bySubject: sortedBySubject(ofKind), from: es.from, to: es.to}
+}
+
+// Has reports whether there is an event of any of kinds, or any event at all
+// when kinds is empty: whether OfKind would hold an event.
+func (es Events) Has(kinds ...string) bool {
+	for _, e := range es.byDate {
 		if len(kinds) == 0 || slices.Contains(kinds, e.Kind()) {
 			return true
 		}
@@ -120,44 +139,26 @@ func (es Events) Has(date civil.Date, kinds ...string) bool {
 	return false
 }
 
-// Find returns the events of date of any of kinds, or of every kind when
-// kinds is empty, in order.
-func (es Events) Find(date civil.Date, kinds ...string) Selection {
-	on := es.between(date, date)
-	if len(kinds) == 0 {
-		return on
-	}
+// Len returns the number of events.
+func (es Events) Len() int { return len(es.byDate) }
 
-	var found Selection
+// All returns the events in order: by date, then by subject, then as
+// NewEvents was given them.
+func (es Events) All() iter.Seq[Event] { return slices.Values(es.byDate) }
 
-	for _, e := range on {
-		if slices.Contains(kinds, e.Kind()) {
-			found = append(found, e)
+// Of returns the events of type T, as T values, in the order of All. For a
+// concrete T, it keeps the events whose dynamic type is exactly T, so
+// Of[Auction] and Of[*Auction] differ, and Of[EconomicEvent] leaves out a
+// program's types that embed EconomicEvent. For an interface T, it keeps
+// every event that implements T.
+func (es Events) Of[T Event]() iter.Seq[T] {
+	return func(yield func(T) bool) {
+		for _, e := range es.byDate {
+			if typed, ok := e.(T); ok && !yield(typed) {
+				return
+			}
 		}
 	}
-
-	return found
-}
-
-// Between returns the events dated from from to to, both included, by date.
-// It returns none when from is after to.
-func (es Events) Between(from, to civil.Date) Selection { return es.between(from, to) }
-
-// between returns the events dated from from to to, both included, by date.
-// The result shares the memory of byDate and has no room to grow into it.
-func (es Events) between(from, to civil.Date) Selection {
-	if from.After(to) {
-		return nil
-	}
-
-	start := sort.Search(len(es.byDate), func(i int) bool {
-		return !es.byDate[i].Timing().Date().Before(from)
-	})
-	end := sort.Search(len(es.byDate), func(i int) bool {
-		return es.byDate[i].Timing().Date().After(to)
-	})
-
-	return es.byDate[start:end:end]
 }
 
 //nolint:cyclop // one flat list of checks reads better than a split
@@ -192,23 +193,27 @@ func (es Events) validate() error {
 	return nil
 }
 
-// A Selection is the events a read gives, of every type, in order. It may
-// share the memory of the Events that gave it, so it must not be changed.
-type Selection []Event
+// sortedBySubject returns a copy of byDate, which is in order of date, in
+// order of subject, then date: a stable sort by subject alone leaves each
+// subject's events in the date order they already have.
+func sortedBySubject(byDate []Event) []Event {
+	bySubject := slices.Clone(byDate)
+	slices.SortStableFunc(bySubject, compareBySubject)
 
-// Of returns the events of type T, as T values. For a concrete T, it keeps
-// the events whose dynamic type is exactly T, so Of[Auction] and
-// Of[*Auction] differ, and Of[EconomicEvent] leaves out a program's types
-// that embed EconomicEvent. For an interface T, it keeps every event that
-// implements T.
-func (s Selection) Of[T Event]() iter.Seq[T] {
-	return func(yield func(T) bool) {
-		for _, e := range s {
-			if typed, ok := e.(T); ok && !yield(typed) {
-				return
-			}
-		}
-	}
+	return bySubject
+}
+
+// dated returns the part of events, which are in order of date, that is
+// dated from from to to, both included. from is not after to.
+func dated(events []Event, from, to civil.Date) []Event {
+	start := sort.Search(len(events), func(i int) bool {
+		return !events[i].Timing().Date().Before(from)
+	})
+	end := sort.Search(len(events), func(i int) bool {
+		return events[i].Timing().Date().After(to)
+	})
+
+	return events[start:end]
 }
 
 // compareByDate orders events by date, then by subject.

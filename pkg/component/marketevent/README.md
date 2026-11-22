@@ -1,6 +1,6 @@
 # marketevent
 
-Scheduled market events: economic releases, company events and a program's own. Every event says when it happens, what kind it is and what it is about, and a reader finds events by date and by subject. See the package documentation for the API.
+Scheduled market events: economic releases, company events and a program's own. Every event says when it happens, what kind it is and what it is about, and an `Events` finds them by subject, by date and by kind. See the package documentation for the API.
 
 ## Events
 
@@ -26,18 +26,33 @@ A `Timing` is an exact instant, or a date that may carry a flag: `FlagBeforeMark
 
 ## Reading
 
+An `Events` is a collection of events and the dates it covers. Narrowing it gives an `Events` again, so the narrowings combine in any order:
+
+| Narrow | Keeps the events |
+|---|---|
+| `For(subject)` | about a region or a stock |
+| `On(date)` | of a date |
+| `Between(from, to)` | dated in a range, both ends included |
+| `OfKind(kinds...)` | of any of some kinds |
+
+`Has` says whether there is an event of some kinds, `Len` counts the events, `All` lists them by date, and `Of` takes the events of one type out as that type.
+
 ```go
 events, err := marketevent.NewEvents(all, from, to)
 
 // Does NVDA report today, and does today have a CPI or an FOMC event?
-nvdaReports := events.For(nvda).Has(today, "earnings")
-cpiOrFOMC := events.Has(today, "CPI", "FOMC")
+nvdaReports := events.For(nvda).On(today).Has("earnings")
+cpiOrFOMC := events.On(today).Has("CPI", "FOMC")
 
 // The report's flag, when its source gives one.
-for report := range events.For(nvda).Find(today, "earnings").Of[marketevent.Earnings]() {
+for report := range events.For(nvda).On(today).Of[marketevent.Earnings]() {
 	flag, flagged := report.Timing().Flag()
 	afterClose := flagged && flag == marketevent.FlagAfterMarket
 }
+
+// The US rate decisions of the year, and how many there are.
+decisions := events.For(us).Between(from, to).OfKind("FOMC")
+fmt.Println(decisions.Len())
 
 // AAPL's dividends, as Dividend values.
 for d := range events.For(aapl).Between(from, to).Of[marketevent.Dividend]() {
@@ -45,7 +60,8 @@ for d := range events.For(aapl).Between(from, to).Of[marketevent.Dividend]() {
 }
 ```
 
-- A read outside the dates an `Events` covers finds nothing, which does not mean that nothing happens. Check `Coverage` once, where the `Events` is built.
+- A read outside the dates an `Events` covers finds nothing, which does not mean that nothing happens. Check `Coverage` once, where the `Events` is built. A narrowed `Events` covers only the dates it is narrowed to.
 - An `Events` holds a schedule as its events state it, and not when each event became known. It cannot say what a program knew on an earlier date.
-- `NewEvents` sorts the slice it is given and keeps it. Neither that slice nor a `Selection` may be changed afterwards.
-- Code that reads events takes a `Reader`, so its tests can give it an `Events` of a few events or a `Reader` of their own.
+- `NewEvents` sorts the slice it is given and keeps it, so that slice may not be changed afterwards.
+- `OfKind` makes a new list. `Has` does not, so it is the cheaper way to ask only whether there is an event.
+- Code that reads events takes an `Events`, and its tests give it one built from the few events they need.

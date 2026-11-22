@@ -14,10 +14,10 @@
 // source states. Nothing here knows a market's hours, so nothing here works
 // out whether an instant comes before an open.
 //
-// Code reads events through a [Reader], which narrows to a subject and reads
-// by date. [Events] is the Reader built from the events a program loads. A
-// read gives a [Selection], whose Of takes the events of one type out as
-// that type.
+// [Events] is the collection of the events a program loads, and the dates it
+// covers. Narrowing it by subject, by date or by kind gives an Events again.
+// Its reads say whether it has events, list them, and take the events of one
+// type out as that type.
 //
 // Nothing here loads or stores events. A program maps its rows to events
 // and builds one [Events] of them.
