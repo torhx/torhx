@@ -6,7 +6,7 @@ Scheduled market events: economic releases, company events and a program's own. 
 
 | Type | What it is | Kind |
 |---|---|---|
-| `EconomicEvent` | An economic event about a region, such as a release of the US CPI. | The name its source's normalizer gives it, such as `CPI`, with an optional detail. |
+| `EconomicEvent` | An economic event about a region, such as a release of the US CPI. | The name its source's normalizer gives it, such as `CPI`. |
 | `Earnings` | An earnings report on a stock. | `earnings` |
 | `Dividend` | A cash dividend with its amount per share, dated by its ex-date. | `dividend` |
 | `Split` | A split with the factor that earlier prices are multiplied by, dated by its ex-date. | `split` |

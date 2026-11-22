@@ -26,10 +26,10 @@ type Event interface {
 }
 
 // An EconomicEvent is a scheduled economic event, such as a release of the
-// US CPI: its region, its timing, and its kind, such as "CPI", with a detail
-// that narrows it. Kinds and details are Torhx's own names, onto which each
-// source's names are mapped, so an event reads the same whatever its source.
-// A program's own type of economic event can embed it and add fields.
+// US CPI: its region, its timing and its kind, such as "CPI". A kind is
+// Torhx's own name for the event, onto which each source's name is mapped,
+// so an event reads the same whatever its source. A program's own type of
+// economic event can embed it and add fields.
 //
 // An EconomicEvent comes only from NewEconomicEvent. The zero value is not
 // an event.
@@ -42,20 +42,14 @@ type EconomicEvent struct {
 
 	// kind is the kind of event, such as "CPI". It is not empty.
 	kind string
-
-	// detail narrows the kind, such as "advance" for a GDP estimate. It is
-	// empty when nothing does.
-	detail string
 }
 
-// NewEconomicEvent returns the event about region at timing, of kind,
-// narrowed by detail, such as "advance" for a GDP estimate. An empty detail
-// narrows nothing.
+// NewEconomicEvent returns the event about region at timing, of kind.
 //
 // It returns an error if region or timing is the zero value, or if kind is
 // empty.
-func NewEconomicEvent(region Region, timing Timing, kind, detail string) (EconomicEvent, error) {
-	e := EconomicEvent{region: region, timing: timing, kind: kind, detail: detail}
+func NewEconomicEvent(region Region, timing Timing, kind string) (EconomicEvent, error) {
+	e := EconomicEvent{region: region, timing: timing, kind: kind}
 	if err := e.validate(); err != nil {
 		return EconomicEvent{}, fmt.Errorf("invalid economic event: %w", err)
 	}
@@ -74,10 +68,6 @@ func (e EconomicEvent) Timing() Timing { return e.timing }
 
 // Kind returns the kind of event, such as "CPI".
 func (e EconomicEvent) Kind() string { return e.kind }
-
-// Detail returns what narrows the kind, such as "advance" for a GDP
-// estimate, or "" when nothing does.
-func (e EconomicEvent) Detail() string { return e.detail }
 
 func (e EconomicEvent) validate() error {
 	if !e.region.IsValid() {

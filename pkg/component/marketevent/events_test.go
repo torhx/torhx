@@ -61,8 +61,8 @@ type schedule struct {
 func mustSchedule(t *testing.T) schedule {
 	t.Helper()
 
-	economic := func(region marketevent.Region, date, kind, detail string) marketevent.EconomicEvent {
-		e, err := marketevent.NewEconomicEvent(region, mustDateTiming(t, date), kind, detail)
+	economic := func(region marketevent.Region, date, kind string) marketevent.EconomicEvent {
+		e, err := marketevent.NewEconomicEvent(region, mustDateTiming(t, date), kind)
 		require.NoError(t, err)
 
 		return e
@@ -88,14 +88,14 @@ func mustSchedule(t *testing.T) schedule {
 
 	s := schedule{
 		aaplDividend: dividend,
-		caCPI:        economic(mustCountryRegion(t, country.CA), busyDay, "CPI", ""),
-		usCPI:        economic(us, busyDay, "CPI", ""),
-		ecbDecision:  economic(mustCurrencyRegion(t, "EUR"), busyDay, "rate decision", ""),
+		caCPI:        economic(mustCountryRegion(t, country.CA), busyDay, "CPI"),
+		usCPI:        economic(us, busyDay, "CPI"),
+		ecbDecision:  economic(mustCurrencyRegion(t, "EUR"), busyDay, "rate decision"),
 		aaplEarnings: earnings(aaplFIGI, mustDateTiming(t, busyDay)),
 		aaplBuyback:  buyback{CompanyEvent: repurchase, shares: 1e6},
 		nvdaEarnings: earnings(nvdaFIGI, afterMarket),
-		usAuction:    auction{EconomicEvent: economic(us, auctionDay, "Treasury auction", ""), term: "10-Year"},
-		usGDP:        economic(us, auctionDay, "GDP", "advance"),
+		usAuction:    auction{EconomicEvent: economic(us, auctionDay, "Treasury auction"), term: "10-Year"},
+		usGDP:        economic(us, auctionDay, "GDP"),
 	}
 
 	given := []marketevent.Event{
@@ -148,12 +148,12 @@ type kindless struct{ marketevent.EconomicEvent }
 // Kind returns no kind.
 func (kindless) Kind() string { return "" }
 
-// detailed is any event that has a detail.
-type detailed interface {
+// regional is any event that is about a region.
+type regional interface {
 	marketevent.Event
 
-	// Detail returns what narrows the event's kind.
-	Detail() string
+	// Region returns the region the event is about.
+	Region() marketevent.Region
 }
 
 func TestNewEventsKeepsTheSlice(t *testing.T) {
@@ -419,8 +419,8 @@ func TestSelectionOf(t *testing.T) {
 
 	// An interface keeps every event that implements it.
 	assert.Equal(t,
-		[]detailed{s.caCPI, s.usCPI, s.ecbDecision, s.usAuction, s.usGDP},
-		slices.Collect(all.Of[detailed]()),
+		[]regional{s.caCPI, s.usCPI, s.ecbDecision, s.usAuction, s.usGDP},
+		slices.Collect(all.Of[regional]()),
 	)
 }
 
