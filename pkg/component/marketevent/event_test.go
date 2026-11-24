@@ -16,7 +16,7 @@ import (
 func mustDateTiming(t *testing.T, s string) marketevent.Timing {
 	t.Helper()
 
-	timing, err := marketevent.NewDateTiming(mustDate(t, s), mustLocation(t, "America/New_York"))
+	timing, err := marketevent.NewDateTiming(mustLocationDate(t, s, newYork))
 	require.NoError(t, err)
 
 	return timing

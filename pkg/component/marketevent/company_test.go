@@ -31,16 +31,15 @@ type timings struct {
 func mustTimings(t *testing.T) timings {
 	t.Helper()
 
-	newYork := mustLocation(t, "America/New_York")
-	day := mustDate(t, "2021-02-05")
+	day := mustLocationDate(t, "2021-02-05", newYork)
 
-	beforeMarket, err := marketevent.NewBeforeMarketTiming(day, newYork)
+	beforeMarket, err := marketevent.NewBeforeMarketTiming(day)
 	require.NoError(t, err)
 
-	afterMarket, err := marketevent.NewAfterMarketTiming(day, newYork)
+	afterMarket, err := marketevent.NewAfterMarketTiming(day)
 	require.NoError(t, err)
 
-	exact, err := marketevent.NewExactTiming(time.Date(2021, time.February, 5, 16, 5, 0, 0, newYork), newYork)
+	exact, err := marketevent.NewExactTiming(time.Date(2021, time.February, 5, 16, 5, 0, 0, day.Location()), day)
 	require.NoError(t, err)
 
 	return timings{

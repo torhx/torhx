@@ -4,12 +4,14 @@ import (
 	"iter"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/talav/civil"
 	"github.com/talav/country"
 
+	"github.com/torhx/torhx/pkg/component/calendar"
 	"github.com/torhx/torhx/pkg/component/marketevent"
 )
 
@@ -18,9 +20,19 @@ const (
 	dividendDay = "2021-02-05"
 	busyDay     = "2021-02-10"
 	auctionDay  = "2021-03-01"
-	firstDay    = "2021-01-01"
-	lastDay     = "2021-12-31"
+	year2021    = "[2021-01-01,2022-01-01)"
 )
+
+// mustDateRange returns the range of dates written in s as
+// [YYYY-MM-DD,YYYY-MM-DD), whose start is included and whose end is not.
+func mustDateRange(t *testing.T, s string) civil.DateRange {
+	t.Helper()
+
+	r, err := civil.NewDateRangeFromString(s)
+	require.NoError(t, err)
+
+	return r
+}
 
 // schedule holds the events the read tests are about, and the Events of
 // them, which cover 2021.
@@ -77,7 +89,7 @@ func mustSchedule(t *testing.T) schedule {
 
 	us := mustCountryRegion(t, country.US)
 
-	afterMarket, err := marketevent.NewAfterMarketTiming(mustDate(t, busyDay), mustLocation(t, "America/New_York"))
+	afterMarket, err := marketevent.NewAfterMarketTiming(mustLocationDate(t, busyDay, newYork))
 	require.NoError(t, err)
 
 	dividend, err := marketevent.NewDividend(mustFIGI(t, aaplFIGI), mustDateTiming(t, dividendDay), 0.205)
@@ -103,7 +115,7 @@ func mustSchedule(t *testing.T) schedule {
 		s.aaplBuyback, s.usGDP, s.aaplDividend, s.caCPI,
 	}
 
-	s.events, err = marketevent.NewEvents(given, mustDate(t, firstDay), mustDate(t, lastDay))
+	s.events, err = marketevent.NewEvents(given, mustDateRange(t, year2021))
 	require.NoError(t, err)
 
 	return s
@@ -163,7 +175,7 @@ func TestNewEventsKeepsTheSlice(t *testing.T) {
 	s := mustSchedule(t)
 	given := []marketevent.Event{s.usGDP, s.aaplDividend, s.usGDP}
 
-	events, err := marketevent.NewEvents(given, mustDate(t, firstDay), mustDate(t, lastDay))
+	events, err := marketevent.NewEvents(given, mustDateRange(t, year2021))
 	require.NoError(t, err)
 
 	want := []marketevent.Event{s.aaplDividend, s.usGDP, s.usGDP}
@@ -176,55 +188,45 @@ func TestNewEventsRejects(t *testing.T) {
 	t.Parallel()
 
 	s := mustSchedule(t)
-	first := mustDate(t, firstDay)
-	last := mustDate(t, lastDay)
-	busy := mustDate(t, busyDay)
+	year := mustDateRange(t, year2021)
 
 	tests := []struct {
-		name    string
-		events  []marketevent.Event
-		from    civil.Date
-		to      civil.Date
-		wantErr string
+		name     string
+		events   []marketevent.Event
+		coverage civil.DateRange
+		wantErr  string
 	}{
-		{name: "from after to", from: last, to: first, wantErr: "are not a range"},
-		{name: "zero from", from: civil.Date{}, to: last, wantErr: "are not a range"},
-		{name: "zero to", from: first, to: civil.Date{}, wantErr: "are not a range"},
-		{name: "nil event", events: []marketevent.Event{nil}, from: first, to: last, wantErr: "event 0 is missing"},
+		{name: "zero coverage", events: []marketevent.Event{s.usCPI}, wantErr: "coverage is missing"},
+		{name: "nil event", events: []marketevent.Event{nil}, coverage: year, wantErr: "event 0 is missing"},
 		{
-			name:    "zero timing",
-			events:  []marketevent.Event{s.usCPI, auction{}},
-			from:    first,
-			to:      last,
-			wantErr: "event 1 has no timing",
+			name:     "zero timing",
+			events:   []marketevent.Event{s.usCPI, auction{}},
+			coverage: year,
+			wantErr:  "event 1 has no timing",
 		},
 		{
-			name:    "zero subject",
-			events:  []marketevent.Event{subjectless{EconomicEvent: s.usCPI}},
-			from:    first,
-			to:      last,
-			wantErr: "event 0 has no subject",
+			name:     "zero subject",
+			events:   []marketevent.Event{subjectless{EconomicEvent: s.usCPI}},
+			coverage: year,
+			wantErr:  "event 0 has no subject",
 		},
 		{
-			name:    "empty kind",
-			events:  []marketevent.Event{kindless{EconomicEvent: s.usCPI}},
-			from:    first,
-			to:      last,
-			wantErr: "event 0 has no kind",
+			name:     "empty kind",
+			events:   []marketevent.Event{kindless{EconomicEvent: s.usCPI}},
+			coverage: year,
+			wantErr:  "event 0 has no kind",
 		},
 		{
-			name:    "dated before the coverage",
-			events:  []marketevent.Event{s.usCPI},
-			from:    busy.AddDays(1),
-			to:      last,
-			wantErr: "event 0 is dated 2021-02-10, outside 2021-02-11 to 2021-12-31",
+			name:     "dated before the coverage",
+			events:   []marketevent.Event{s.usCPI},
+			coverage: mustDateRange(t, "[2021-02-11,2022-01-01)"),
+			wantErr:  "event 0 is dated 2021-02-10, outside [2021-02-11,2022-01-01)",
 		},
 		{
-			name:    "dated after the coverage",
-			events:  []marketevent.Event{s.usCPI},
-			from:    first,
-			to:      busy.AddDays(-1),
-			wantErr: "event 0 is dated 2021-02-10, outside 2021-01-01 to 2021-02-09",
+			name:     "dated on the end of the coverage, which is not covered",
+			events:   []marketevent.Event{s.usCPI},
+			coverage: mustDateRange(t, "[2021-01-01,2021-02-10)"),
+			wantErr:  "event 0 is dated 2021-02-10, outside [2021-01-01,2021-02-10)",
 		},
 	}
 
@@ -232,7 +234,7 @@ func TestNewEventsRejects(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := marketevent.NewEvents(tt.events, tt.from, tt.to)
+			_, err := marketevent.NewEvents(tt.events, tt.coverage)
 			require.ErrorContains(t, err, tt.wantErr)
 		})
 	}
@@ -243,40 +245,48 @@ func TestEventsCoverage(t *testing.T) {
 
 	s := mustSchedule(t)
 	us := mustRegionSubject(t, mustCountryRegion(t, country.US))
-	first := mustDate(t, firstDay)
-	last := mustDate(t, lastDay)
-	dividend := mustDate(t, dividendDay)
-	busy := mustDate(t, busyDay)
+	year := mustDateRange(t, year2021)
+	busy := mustDateRange(t, "[2021-02-10,2021-02-11)")
+
+	// The exclusive end of this one-day range falls in year 10000.
+	last := mustDate(t, "9999-12-31")
+	lastDay, err := civil.NewDateRange(last, last.AddDays(1))
+	require.NoError(t, err)
+	empty, err := marketevent.NewEvents(nil, lastDay)
+	require.NoError(t, err)
 
 	tests := []struct {
-		name     string
-		events   marketevent.Events
-		wantFrom civil.Date
-		wantTo   civil.Date
+		name   string
+		events marketevent.Events
+		want   civil.DateRange
 	}{
-		{name: "as built", events: s.events, wantFrom: first, wantTo: last},
-		{name: "a subject", events: s.events.For(us), wantFrom: first, wantTo: last},
-		{name: "kinds", events: s.events.OfKind("CPI"), wantFrom: first, wantTo: last},
-		{name: "a date", events: s.events.On(busy), wantFrom: busy, wantTo: busy},
-		{name: "a range", events: s.events.Between(dividend, busy), wantFrom: dividend, wantTo: busy},
+		{name: "as built", events: s.events, want: year},
+		{name: "covered day without events at the year boundary", events: empty.On(last), want: lastDay},
+		{name: "a subject", events: s.events.For(us), want: year},
+		{name: "kinds", events: s.events.OfKind("CPI"), want: year},
+		{name: "a date", events: s.events.On(mustDate(t, busyDay)), want: busy},
+		{name: "a range", events: s.events.During(busy), want: busy},
 		{
-			name:     "a range wider than the coverage",
-			events:   s.events.Between(mustDate(t, "2020-01-01"), busy),
-			wantFrom: first,
-			wantTo:   busy,
+			name:   "a range wider than the coverage",
+			events: s.events.During(mustDateRange(t, "[2020-01-01,2021-02-11)")),
+			want:   mustDateRange(t, "[2021-01-01,2021-02-11)"),
 		},
 		{name: "a date outside the coverage", events: s.events.On(mustDate(t, "2022-02-10"))},
-		{name: "a range that ends before it starts", events: s.events.Between(last, first)},
+		{
+			name:   "overlap at the end of coverage",
+			events: s.events.During(mustDateRange(t, "[2021-12-31,2022-02-01)")),
+			want:   mustDateRange(t, "[2021-12-31,2022-01-01)"),
+		},
+		{name: "widening a narrowed range", events: s.events.On(mustDate(t, busyDay)).During(year), want: busy},
+		{name: "a range that starts where the coverage ends", events: s.events.During(mustDateRange(t, "[2022-01-01,2022-02-01)"))},
+		{name: "the zero range", events: s.events.During(civil.DateRange{})},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			from, to := tt.events.Coverage()
-
-			assert.Equal(t, tt.wantFrom, from)
-			assert.Equal(t, tt.wantTo, to)
+			assert.Equal(t, tt.want, tt.events.Coverage())
 		})
 	}
 }
@@ -286,17 +296,13 @@ func TestZeroEvents(t *testing.T) {
 
 	var events marketevent.Events
 
-	from, to := events.Coverage()
-	first := mustDate(t, firstDay)
-	last := mustDate(t, lastDay)
 	us := mustRegionSubject(t, mustCountryRegion(t, country.US))
 
-	assert.False(t, from.IsValid())
-	assert.False(t, to.IsValid())
+	assert.False(t, events.Coverage().IsValid())
 	assert.False(t, events.Has())
 	assertEvents(t, nil, events)
-	assertEvents(t, nil, events.On(first))
-	assertEvents(t, nil, events.Between(first, last))
+	assertEvents(t, nil, events.On(mustDate(t, busyDay)))
+	assertEvents(t, nil, events.During(mustDateRange(t, year2021)))
 	assertEvents(t, nil, events.For(us))
 	assertEvents(t, nil, events.OfKind("CPI"))
 	assert.Empty(t, slices.Collect(events.Of[marketevent.Dividend]()))
@@ -309,51 +315,93 @@ func TestEventsOn(t *testing.T) {
 
 	tests := []struct {
 		name string
-		date string
+		date civil.Date
 		want []marketevent.Event
 	}{
-		{name: "a date with several events, by subject", date: busyDay, want: s.all()[1:7]},
-		{name: "a date with one event", date: dividendDay, want: []marketevent.Event{s.aaplDividend}},
-		{name: "a date without events", date: "2021-02-06"},
-		{name: "a date outside the coverage", date: "2022-02-10"},
+		{name: "a date with several events, by subject", date: mustDate(t, busyDay), want: s.all()[1:7]},
+		{name: "a date with one event", date: mustDate(t, dividendDay), want: []marketevent.Event{s.aaplDividend}},
+		{name: "a date without events", date: mustDate(t, "2021-02-06")},
+		{name: "a date outside the coverage", date: mustDate(t, "2022-02-10")},
+		{name: "the zero date", date: civil.Date{}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			assertEvents(t, tt.want, s.events.On(mustDate(t, tt.date)))
+			assertEvents(t, tt.want, s.events.On(tt.date))
 		})
 	}
 }
 
-func TestEventsBetween(t *testing.T) {
+func TestEventsDuring(t *testing.T) {
 	t.Parallel()
 
 	s := mustSchedule(t)
 	all := s.all()
 
 	tests := []struct {
-		name string
-		from string
-		to   string
-		want []marketevent.Event
+		name  string
+		dates civil.DateRange
+		want  []marketevent.Event
 	}{
-		{name: "the coverage", from: firstDay, to: lastDay, want: all},
-		{name: "wider than the coverage", from: "2020-01-01", to: "2022-12-31", want: all},
-		{name: "both ends included", from: dividendDay, to: busyDay, want: all[:7]},
-		{name: "one date", from: auctionDay, to: auctionDay, want: []marketevent.Event{s.usAuction, s.usGDP}},
-		{name: "dates without events", from: "2021-04-01", to: "2021-04-30"},
-		{name: "from after to", from: lastDay, to: firstDay},
+		{name: "the coverage", dates: mustDateRange(t, year2021), want: all},
+		{name: "wider than the coverage", dates: mustDateRange(t, "[2020-01-01,2023-01-01)"), want: all},
+		{name: "the start is included", dates: mustDateRange(t, "[2021-02-10,2021-03-02)"), want: all[1:]},
+		{name: "the end is not", dates: mustDateRange(t, "[2021-02-05,2021-02-10)"), want: all[:1]},
+		{name: "one date", dates: mustDateRange(t, "[2021-03-01,2021-03-02)"), want: []marketevent.Event{s.usAuction, s.usGDP}},
+		{name: "dates without events", dates: mustDateRange(t, "[2021-04-01,2021-05-01)")},
+		{name: "dates outside the coverage", dates: mustDateRange(t, "[2022-01-01,2022-02-01)")},
+		{name: "the zero range", dates: civil.DateRange{}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			assertEvents(t, tt.want, s.events.Between(mustDate(t, tt.from), mustDate(t, tt.to)))
+			assertEvents(t, tt.want, s.events.During(tt.dates))
 		})
 	}
+}
+
+func TestEventsWithTradingCalendar(t *testing.T) {
+	t.Parallel()
+
+	calendars, err := calendar.TradingCalendars()
+	require.NoError(t, err)
+	registry, err := calendar.NewRegistry(calendars)
+	require.NoError(t, err)
+	id, err := calendar.NewID("XNYS")
+	require.NoError(t, err)
+	xnys, err := registry.Get(id)
+	require.NoError(t, err)
+
+	// The Friday after Thanksgiving in 2021 closed at 13:00 New York time.
+	at := time.Date(2021, time.November, 26, 18, 30, 0, 0, time.UTC)
+	venue := xnys.Exchange()
+	day, err := civil.NewLocationDate(venue.DateOf(at), venue.TimeZone())
+	require.NoError(t, err)
+	timing, err := marketevent.NewExactTiming(at, day)
+	require.NoError(t, err)
+	report, err := marketevent.NewEarnings(mustFIGI(t, aaplFIGI), timing)
+	require.NoError(t, err)
+
+	events, err := marketevent.NewEvents([]marketevent.Event{report}, xnys.Coverage())
+	require.NoError(t, err)
+	onDay := events.On(day.Date())
+	reports := slices.Collect(onDay.Of[marketevent.Earnings]())
+	require.Len(t, reports, 1)
+	assert.Equal(t, []civil.Date{day.Date()}, xnys.TradingDaysBetween(onDay.Coverage()))
+
+	instant, exact := reports[0].Timing().Instant()
+	require.True(t, exact)
+	assert.True(t, venue.IsRegularHours(instant))
+	_, open, err := xnys.SessionAt(instant)
+	require.NoError(t, err)
+	assert.False(t, open)
+
+	_, flagged := reports[0].Timing().Flag()
+	assert.False(t, flagged)
 }
 
 func TestEventsFor(t *testing.T) {
@@ -424,8 +472,8 @@ func TestEventsNarrowInAnyOrder(t *testing.T) {
 
 	s := mustSchedule(t)
 	us := mustRegionSubject(t, mustCountryRegion(t, country.US))
-	first := mustDate(t, firstDay)
 	busy := mustDate(t, busyDay)
+	untilMarch := mustDateRange(t, "[2021-01-01,2021-03-01)")
 	reports := []marketevent.Event{s.aaplEarnings, s.nvdaEarnings}
 
 	tests := []struct {
@@ -433,12 +481,12 @@ func TestEventsNarrowInAnyOrder(t *testing.T) {
 		events marketevent.Events
 		want   []marketevent.Event
 	}{
-		{name: "a subject, then dates", events: s.events.For(us).Between(first, busy), want: []marketevent.Event{s.usCPI}},
-		{name: "dates, then a subject", events: s.events.Between(first, busy).For(us), want: []marketevent.Event{s.usCPI}},
+		{name: "a subject, then dates", events: s.events.For(us).During(untilMarch), want: []marketevent.Event{s.usCPI}},
+		{name: "dates, then a subject", events: s.events.During(untilMarch).For(us), want: []marketevent.Event{s.usCPI}},
 		{name: "a subject, then kinds", events: s.events.For(us).OfKind("GDP"), want: []marketevent.Event{s.usGDP}},
 		{name: "kinds, then a subject", events: s.events.OfKind("GDP").For(us), want: []marketevent.Event{s.usGDP}},
-		{name: "dates, then kinds", events: s.events.Between(first, busy).OfKind("earnings"), want: reports},
-		{name: "kinds, then dates", events: s.events.OfKind("earnings").Between(first, busy), want: reports},
+		{name: "dates, then kinds", events: s.events.During(untilMarch).OfKind("earnings"), want: reports},
+		{name: "kinds, then dates", events: s.events.OfKind("earnings").During(untilMarch), want: reports},
 		{name: "all three", events: s.events.For(us).On(busy).OfKind("CPI"), want: []marketevent.Event{s.usCPI}},
 		{name: "all three, the other way", events: s.events.OfKind("CPI").On(busy).For(us), want: []marketevent.Event{s.usCPI}},
 	}
@@ -476,7 +524,7 @@ func TestEventsReadATypeThatEmbedsNothing(t *testing.T) {
 	aapl := mustStockSubject(t, aaplFIGI)
 	expiry := lockup{subject: aapl, timing: mustDateTiming(t, busyDay)}
 
-	events, err := marketevent.NewEvents([]marketevent.Event{expiry}, day, day)
+	events, err := marketevent.NewEvents([]marketevent.Event{expiry}, mustDateRange(t, "[2021-02-10,2021-02-11)"))
 	require.NoError(t, err)
 
 	assert.True(t, events.For(aapl).On(day).Has("lockup expiry"))

@@ -15,16 +15,12 @@ import (
 //
 // Timing comes only from a constructor. The zero value is not a timing.
 type Timing struct {
-	// date is the event's date in loc. For an exact timing it is the date
-	// that instant falls on there.
-	date civil.Date
+	// locationDate is the event's date in its zone. For an exact timing it
+	// is the date that instant falls on there.
+	locationDate civil.LocationDate
 
-	// loc is the time zone the timing is dated in. It is neither nil nor
-	// time.Local.
-	loc *time.Location
-
-	// instant is the instant of an exact timing, shown in loc. It is nil for
-	// a date.
+	// instant is the instant of an exact timing, shown in the zone of
+	// locationDate. It is nil for a date.
 	instant *time.Time
 
 	// flag is the flag of a date. It is a fact given to the date, which a
@@ -33,67 +29,69 @@ type Timing struct {
 	flag *Flag
 }
 
-// NewExactTiming returns the timing of the instant t, dated in loc.
-//
-// It returns an error if t is the zero time, or if loc is nil or time.Local,
-// whose zone is the machine's and not one a source specifies.
-func NewExactTiming(t time.Time, loc *time.Location) (Timing, error) {
-	timing := Timing{loc: loc, instant: &t}
+// NewExactTiming returns the timing of the instant t on day, shown in
+// day's time zone. It returns an error if either value is missing or if
+// the instant falls on a different date in that zone.
+func NewExactTiming(t time.Time, day civil.LocationDate) (Timing, error) {
+	// A missing day has no location to pass to time.Time.In.
+	if day.IsValid() {
+		t = t.In(day.Location())
+	}
+
+	timing := Timing{locationDate: day, instant: &t}
 	if err := timing.validate(); err != nil {
 		return Timing{}, fmt.Errorf("invalid exact timing %s: %w", t, err)
 	}
 
-	// The instant is shown and dated in loc only now, because time.Time.In
-	// panics on a nil location.
-	*timing.instant = t.In(loc)
-	timing.date = civil.NewDateFromTime(*timing.instant)
-
 	return timing, nil
 }
 
-// NewDateTiming returns the timing of the date d in loc, without a flag.
+// NewDateTiming returns the timing of day, a date in a zone, without a flag.
 //
-// It returns an error if d is the zero date, or if loc is nil or time.Local.
-func NewDateTiming(d civil.Date, loc *time.Location) (Timing, error) {
-	timing := Timing{date: d, loc: loc}
+// It returns an error if day is the zero value.
+func NewDateTiming(day civil.LocationDate) (Timing, error) {
+	timing := Timing{locationDate: day}
 	if err := timing.validate(); err != nil {
-		return Timing{}, fmt.Errorf("invalid date timing %s: %w", d, err)
+		return Timing{}, fmt.Errorf("invalid date timing: %w", err)
 	}
 
 	return timing, nil
 }
 
-// NewBeforeMarketTiming returns the timing of the date d in loc, before the
-// market opens.
+// NewBeforeMarketTiming returns the timing of day, a date in a zone, before
+// the market opens.
 //
-// It returns an error as NewDateTiming does.
-func NewBeforeMarketTiming(d civil.Date, loc *time.Location) (Timing, error) {
-	timing := Timing{date: d, loc: loc, flag: new(FlagBeforeMarket)}
+// It returns an error if day is the zero value.
+func NewBeforeMarketTiming(day civil.LocationDate) (Timing, error) {
+	timing := Timing{locationDate: day, flag: new(FlagBeforeMarket)}
 	if err := timing.validate(); err != nil {
-		return Timing{}, fmt.Errorf("invalid before-market timing %s: %w", d, err)
+		return Timing{}, fmt.Errorf("invalid before-market timing: %w", err)
 	}
 
 	return timing, nil
 }
 
-// NewAfterMarketTiming returns the timing of the date d in loc, after the
-// market closes.
+// NewAfterMarketTiming returns the timing of day, a date in a zone, after
+// the market closes.
 //
-// It returns an error as NewDateTiming does.
-func NewAfterMarketTiming(d civil.Date, loc *time.Location) (Timing, error) {
-	timing := Timing{date: d, loc: loc, flag: new(FlagAfterMarket)}
+// It returns an error if day is the zero value.
+func NewAfterMarketTiming(day civil.LocationDate) (Timing, error) {
+	timing := Timing{locationDate: day, flag: new(FlagAfterMarket)}
 	if err := timing.validate(); err != nil {
-		return Timing{}, fmt.Errorf("invalid after-market timing %s: %w", d, err)
+		return Timing{}, fmt.Errorf("invalid after-market timing: %w", err)
 	}
 
 	return timing, nil
 }
+
+// LocationDate returns the event's date together with its zone.
+func (t Timing) LocationDate() civil.LocationDate { return t.locationDate }
 
 // Date returns the event's date in its zone.
-func (t Timing) Date() civil.Date { return t.date }
+func (t Timing) Date() civil.Date { return t.locationDate.Date() }
 
 // Location returns the time zone of the timing.
-func (t Timing) Location() *time.Location { return t.loc }
+func (t Timing) Location() *time.Location { return t.locationDate.Location() }
 
 // Instant returns the instant of an exact timing, shown in its zone. It
 // reports false for a date.
@@ -118,23 +116,23 @@ func (t Timing) Flag() (Flag, bool) {
 
 // IsValid reports whether t is a timing. It is false only for the zero
 // value.
-func (t Timing) IsValid() bool { return t.date.IsValid() }
+func (t Timing) IsValid() bool { return t.locationDate.IsValid() }
 
 func (t Timing) validate() error {
-	if t.instant != nil && t.instant.IsZero() {
-		return errors.New("instant is missing")
-	}
-
-	if t.instant == nil && !t.date.IsValid() {
+	if !t.locationDate.IsValid() {
 		return errors.New("date is missing")
 	}
 
-	if t.loc == nil {
-		return errors.New("time zone is missing")
+	if t.instant == nil {
+		return nil
 	}
 
-	if t.loc == time.Local {
-		return errors.New("time zone is the machine's local zone, not one a source specifies")
+	if t.instant.IsZero() {
+		return errors.New("instant is missing")
+	}
+
+	if date := civil.NewDateFromTime(*t.instant); date != t.Date() {
+		return fmt.Errorf("instant falls on %s in %s, want %s", date, t.Location(), t.Date())
 	}
 
 	return nil
