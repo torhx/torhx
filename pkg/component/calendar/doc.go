@@ -6,11 +6,11 @@
 // between two instants. A session belongs to one day and the day has the
 // date, so trading on a Sunday evening can belong to Monday.
 //
-// A calendar is built once and never changes. [NewTradingCalendar] takes days
-// that are already settled; [BuildTradingCalendar] expands weekly schedules
-// and dated exceptions into them. The schedule rules stay in the builder,
-// and the calendar holds only the result.
+// A calendar is built once and never changes. [NewTradingCalendar] takes
+// days that are already settled. [BuildTradingCalendar] expands weekly
+// schedules and dated exceptions into those days.
 //
-// Nothing here reads a clock. Every query takes the instant or the date it
-// asks about.
+// Calendar coverage and trading-day queries over a range use
+// [civil.DateRange]. The start date is included and the end date is excluded.
+// Queries take their dates or instants from the caller.
 package calendar

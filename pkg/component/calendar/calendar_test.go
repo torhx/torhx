@@ -35,6 +35,16 @@ func mustDates(t *testing.T, dates ...string) []civil.Date {
 	return parsed
 }
 
+// mustDateRange reads a half-open range such as [2026-01-01,2027-01-01).
+func mustDateRange(t *testing.T, text string) civil.DateRange {
+	t.Helper()
+
+	period, err := civil.NewDateRangeFromString(text)
+	require.NoError(t, err)
+
+	return period
+}
+
 // newXNYS returns New York regular hours from Monday 2026-11-16 to Friday
 // 2026-12-11, with Thanksgiving closed and the Friday after closing at 13:00.
 func newXNYS(t *testing.T) calendar.TradingCalendar {
@@ -43,7 +53,7 @@ func newXNYS(t *testing.T) calendar.TradingCalendar {
 	e := mustExchange(t, "XNYS")
 	week := mustWeek(t, "2026-01-01", workweek(), mustHours(t, calendar.SessionKindRegular, "09:30", "16:00", 0))
 
-	return mustBuild(t, e, "2026-11-16", "2026-12-11", week, map[civil.Date][]calendar.Session{
+	return mustBuild(t, e, mustDateRange(t, "[2026-11-16,2026-12-12)"), week, map[civil.Date][]calendar.Session{
 		mustDate(t, "2026-11-26"): {},
 		mustDate(t, "2026-11-27"): {
 			mustSession(t, calendar.SessionKindRegular, e.Location(), "2026-11-27 09:30", "2026-11-27 13:00"),
@@ -62,7 +72,7 @@ func newXNYSExtended(t *testing.T) calendar.TradingCalendar {
 		mustHours(t, calendar.SessionKindExtended, "16:00", "20:00", 0),
 	)
 
-	return mustBuild(t, mustExchange(t, "XNYS"), "2026-11-16", "2026-11-20", week, nil)
+	return mustBuild(t, mustExchange(t, "XNYS"), mustDateRange(t, "[2026-11-16,2026-11-21)"), week, nil)
 }
 
 // newFutures returns Chicago futures hours for the two weeks from Monday
@@ -72,7 +82,7 @@ func newFutures(t *testing.T) calendar.TradingCalendar {
 
 	week := mustWeek(t, "2026-01-01", workweek(), mustHours(t, calendar.SessionKindRegular, "17:00", "16:00", 1))
 
-	return mustBuild(t, mustExchange(t, "XCBF"), "2026-11-09", "2026-11-20", week, nil)
+	return mustBuild(t, mustExchange(t, "XCBF"), mustDateRange(t, "[2026-11-09,2026-11-21)"), week, nil)
 }
 
 // newFX returns a market that trades from Sunday 17:00 to Friday 17:00 New
@@ -82,7 +92,7 @@ func newFX(t *testing.T) calendar.TradingCalendar {
 
 	week := mustWeek(t, "2026-01-01", workweek(), mustHours(t, calendar.SessionKindRegular, "17:00", "17:00", 1))
 
-	return mustBuild(t, mustExchange(t, "XNYS"), "2026-11-09", "2026-11-20", week, nil)
+	return mustBuild(t, mustExchange(t, "XNYS"), mustDateRange(t, "[2026-11-09,2026-11-21)"), week, nil)
 }
 
 // newCrypto returns a market that never stops, for the week from Monday
@@ -92,7 +102,7 @@ func newCrypto(t *testing.T) calendar.TradingCalendar {
 
 	week := mustWeek(t, "2026-01-01", everyDay(), mustHours(t, calendar.SessionKindRegular, "00:00", "00:00", 0))
 
-	return mustBuild(t, mustExchange(t, "BINANCE"), "2026-11-09", "2026-11-15", week, nil)
+	return mustBuild(t, mustExchange(t, "BINANCE"), mustDateRange(t, "[2026-11-09,2026-11-16)"), week, nil)
 }
 
 // newXTKS returns Tokyo hours, with their lunch break, for the week of
@@ -105,7 +115,7 @@ func newXTKS(t *testing.T) calendar.TradingCalendar {
 		mustHours(t, calendar.SessionKindRegular, "12:30", "15:30", 0),
 	)
 
-	return mustBuild(t, mustExchange(t, "XTKS"), "2026-12-07", "2026-12-11", week, nil)
+	return mustBuild(t, mustExchange(t, "XTKS"), mustDateRange(t, "[2026-12-07,2026-12-12)"), week, nil)
 }
 
 func TestNewTradingCalendarRejects(t *testing.T) {
@@ -166,14 +176,13 @@ func TestTradingCalendarIdentityAndCoverage(t *testing.T) {
 	t.Parallel()
 
 	c := newXNYS(t)
-	from, to := c.Coverage()
 
 	assert.True(t, c.IsValid())
 	assert.False(t, calendar.TradingCalendar{}.IsValid())
+	assert.Equal(t, civil.DateRange{}, calendar.TradingCalendar{}.Coverage())
 	assert.Equal(t, "XNYS", c.ID().String())
 	assert.Equal(t, "XNYS", c.Exchange().Code().String())
-	assert.Equal(t, mustDate(t, "2026-11-16"), from)
-	assert.Equal(t, mustDate(t, "2026-12-11"), to)
+	assert.Equal(t, mustDateRange(t, "[2026-11-16,2026-12-12)"), c.Coverage())
 }
 
 func TestTradingCalendarShowsInstantsInTheExchangeZone(t *testing.T) {
@@ -516,11 +525,12 @@ func TestCoverageMayEndOnAWeekend(t *testing.T) {
 	t.Parallel()
 
 	week := mustWeek(t, "2026-01-01", workweek(), mustHours(t, calendar.SessionKindRegular, "09:30", "16:00", 0))
-	c := mustBuild(t, mustExchange(t, "XNYS"), "2026-11-14", "2026-11-22", week, nil)
+	c := mustBuild(t, mustExchange(t, "XNYS"), mustDateRange(t, "[2026-11-14,2026-11-23)"), week, nil)
 
-	from, to := c.Coverage()
-	assert.Equal(t, mustDate(t, "2026-11-14"), from)
-	assert.Equal(t, mustDate(t, "2026-11-22"), to)
+	assert.Equal(t, mustDateRange(t, "[2026-11-14,2026-11-23)"), c.Coverage())
+
+	_, err := c.Day(c.Coverage().End())
+	require.ErrorIs(t, err, calendar.ErrOutOfCoverage)
 
 	sunday, err := c.Day(mustDate(t, "2026-11-22"))
 	require.NoError(t, err)
@@ -606,24 +616,28 @@ func TestNextTradingDayAndPreviousTradingDay(t *testing.T) {
 func TestTradingDaysBetween(t *testing.T) {
 	t.Parallel()
 
+	c := newXNYS(t)
 	tests := []struct {
-		name    string
-		from    string
-		to      string
-		want    []string
-		wantErr string
+		// name identifies the boundary or market closure under test.
+		name string
+
+		// period is the requested half-open range of calendar dates.
+		period civil.DateRange
+
+		// want lists the trading dates in chronological order.
+		want []string
 	}{
-		{name: "a week with a holiday", from: "2026-11-23", to: "2026-11-27", want: []string{"2026-11-23", "2026-11-24", "2026-11-25", "2026-11-27"}},
-		{name: "ends on a Sunday", from: "2026-11-19", to: "2026-11-22", want: []string{"2026-11-19", "2026-11-20"}},
-		{name: "one trading day", from: "2026-11-23", to: "2026-11-23", want: []string{"2026-11-23"}},
-		{name: "a weekend", from: "2026-11-21", to: "2026-11-22", want: []string{}},
-		{name: "starts on a holiday", from: "2026-11-26", to: "2026-11-30", want: []string{"2026-11-27", "2026-11-30"}},
-		{name: "ends on a holiday", from: "2026-11-25", to: "2026-11-26", want: []string{"2026-11-25"}},
-		{name: "a holiday alone", from: "2026-11-26", to: "2026-11-26", want: []string{}},
-		{name: "the first day alone", from: "2026-11-16", to: "2026-11-16", want: []string{"2026-11-16"}},
-		{name: "the last day alone", from: "2026-12-11", to: "2026-12-11", want: []string{"2026-12-11"}},
+		{name: "a week with a holiday", period: mustDateRange(t, "[2026-11-23,2026-11-28)"), want: []string{"2026-11-23", "2026-11-24", "2026-11-25", "2026-11-27"}},
+		{name: "ends on a weekend", period: mustDateRange(t, "[2026-11-19,2026-11-22)"), want: []string{"2026-11-19", "2026-11-20"}},
+		{name: "excludes a trading day at the end", period: mustDateRange(t, "[2026-11-23,2026-11-24)"), want: []string{"2026-11-23"}},
+		{name: "a weekend", period: mustDateRange(t, "[2026-11-21,2026-11-23)")},
+		{name: "starts on a holiday", period: mustDateRange(t, "[2026-11-26,2026-12-01)"), want: []string{"2026-11-27", "2026-11-30"}},
+		{name: "ends on a holiday", period: mustDateRange(t, "[2026-11-25,2026-11-26)"), want: []string{"2026-11-25"}},
+		{name: "a holiday alone", period: mustDateRange(t, "[2026-11-26,2026-11-27)")},
+		{name: "the first day alone", period: mustDateRange(t, "[2026-11-16,2026-11-17)"), want: []string{"2026-11-16"}},
+		{name: "the last day alone", period: mustDateRange(t, "[2026-12-11,2026-12-12)"), want: []string{"2026-12-11"}},
 		{
-			name: "the whole coverage", from: "2026-11-16", to: "2026-12-11",
+			name: "the whole coverage", period: c.Coverage(),
 			want: []string{
 				"2026-11-16", "2026-11-17", "2026-11-18", "2026-11-19", "2026-11-20",
 				"2026-11-23", "2026-11-24", "2026-11-25", "2026-11-27",
@@ -631,24 +645,17 @@ func TestTradingDaysBetween(t *testing.T) {
 				"2026-12-07", "2026-12-08", "2026-12-09", "2026-12-10", "2026-12-11",
 			},
 		},
-		{name: "reversed", from: "2026-11-27", to: "2026-11-23", wantErr: "the first date is after the second"},
-		{name: "starts before coverage", from: "2026-11-01", to: "2026-11-23", wantErr: calendar.ErrOutOfCoverage.Error()},
-		{name: "ends after coverage", from: "2026-11-23", to: "2026-12-31", wantErr: calendar.ErrOutOfCoverage.Error()},
+		{name: "missing range", period: civil.DateRange{}},
+		{name: "starts before coverage", period: mustDateRange(t, "[2026-11-15,2026-11-17)")},
+		{name: "ends after coverage", period: mustDateRange(t, "[2026-12-11,2026-12-13)")},
+		{name: "starts at the exclusive end of coverage", period: mustDateRange(t, "[2026-12-12,2026-12-15)")},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := newXNYS(t).TradingDaysBetween(mustDate(t, tt.from), mustDate(t, tt.to))
-			if tt.wantErr != "" {
-				require.ErrorContains(t, err, tt.wantErr)
-
-				return
-			}
-
-			require.NoError(t, err)
-			assert.Equal(t, mustDates(t, tt.want...), got)
+			assert.Equal(t, mustDates(t, tt.want...), c.TradingDaysBetween(tt.period))
 		})
 	}
 }
@@ -658,9 +665,7 @@ func TestCryptoTradesEveryDate(t *testing.T) {
 
 	c := newCrypto(t)
 
-	days, err := c.TradingDaysBetween(mustDate(t, "2026-11-09"), mustDate(t, "2026-11-15"))
-	require.NoError(t, err)
-	assert.Len(t, days, 7)
+	assert.Len(t, c.TradingDaysBetween(c.Coverage()), 7)
 
 	day, err := c.Day(mustDate(t, "2026-11-10"))
 	require.NoError(t, err)

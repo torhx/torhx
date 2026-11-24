@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"time"
@@ -23,12 +24,9 @@ type calendarFile struct {
 	// calendar's ID.
 	Exchange exchange.Code `json:"exchange"`
 
-	// From is the first date the calendar covers.
-	From civil.Date `json:"from"`
-
-	// To is the last date the calendar covers. Its latest years may be
-	// projected from the exchange's rules instead of published by it.
-	To civil.Date `json:"to"`
+	// Coverage holds the dates the calendar covers, including holidays and
+	// weekends. Its latest years may be projected from the exchange's rules.
+	Coverage civil.DateRange `json:"coverage"`
 
 	// Exceptions are the dates whose sessions differ from the exchange's
 	// regular hours, in date order.
@@ -102,6 +100,10 @@ func loadTradingCalendar(content []byte) (TradingCalendar, error) {
 		return TradingCalendar{}, err
 	}
 
+	if !file.Coverage.IsValid() {
+		return TradingCalendar{}, errors.New("calendar coverage is missing")
+	}
+
 	e, err := exchange.NewExchangeFromCode(file.Exchange)
 	if err != nil {
 		return TradingCalendar{}, err
@@ -112,7 +114,7 @@ func loadTradingCalendar(content []byte) (TradingCalendar, error) {
 		return TradingCalendar{}, err
 	}
 
-	week, err := regularWeek(e, file.From)
+	week, err := regularWeek(e, file.Coverage.Start())
 	if err != nil {
 		return TradingCalendar{}, err
 	}
@@ -122,7 +124,7 @@ func loadTradingCalendar(content []byte) (TradingCalendar, error) {
 		return TradingCalendar{}, err
 	}
 
-	return BuildTradingCalendar(id, e, file.From, file.To, []WeeklySchedule{week}, exceptions)
+	return BuildTradingCalendar(id, e, file.Coverage, []WeeklySchedule{week}, exceptions)
 }
 
 // regularWeek returns the exchange's regular sessions on each weekday it

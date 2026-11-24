@@ -60,11 +60,11 @@ func TestBuiltInXNYSCoverage(t *testing.T) {
 	t.Parallel()
 
 	xnys := builtInXNYS(t)
-	from, to := xnys.Coverage()
+	coverage := xnys.Coverage()
 
 	assert.Equal(t, "XNYS", xnys.Exchange().Code().String())
-	assert.Equal(t, parseDate(t, "2000-01-01"), from)
-	assert.Equal(t, parseDate(t, "2030-12-31"), to)
+	assert.Equal(t, parseDate(t, "2000-01-01"), coverage.Start())
+	assert.Equal(t, parseDate(t, "2031-01-01"), coverage.End())
 }
 
 func TestBuiltInXNYSDays(t *testing.T) {
@@ -143,9 +143,11 @@ func TestBuiltInXNYSTradingDaysPerYear(t *testing.T) {
 		t.Run(strconv.Itoa(tt.year), func(t *testing.T) {
 			t.Parallel()
 
-			days, err := xnys.TradingDaysBetween(parseDate(t, fmt.Sprintf("%d-01-01", tt.year)), parseDate(t, fmt.Sprintf("%d-12-31", tt.year)))
+			start := parseDate(t, fmt.Sprintf("%d-01-01", tt.year))
+			year, err := civil.NewDateRange(start, start.AddYears(1))
 			require.NoError(t, err)
-			assert.Len(t, days, tt.want)
+
+			assert.Len(t, xnys.TradingDaysBetween(year), tt.want)
 		})
 	}
 }
@@ -157,8 +159,7 @@ func TestLoadTradingCalendar(t *testing.T) {
 	// that the listed sessions replace both of a day's sessions.
 	c, err := loadTradingCalendar([]byte(`{
 		"exchange": "XHKG",
-		"from": "2026-11-23",
-		"to": "2026-11-29",
+		"coverage": {"start": "2026-11-23", "end": "2026-11-30"},
 		"exceptions": [
 			{"date": "2026-11-24", "note": "Late open", "sessions": [{"open": "10:30", "close": "12:00"}, {"open": "13:00", "close": "16:00"}]},
 			{"date": "2026-11-25", "note": "Morning only", "sessions": [{"open": "09:30", "close": "12:00"}]},
@@ -220,16 +221,47 @@ func TestLoadTradingCalendarRejects(t *testing.T) {
 			exceptions: `{"date": "2026-03-08", "sessions": [{"open": "02:30", "close": "04:00"}]}`,
 			wantErr:    "2026-03-08: 02:30:00 is skipped",
 		},
-		{name: "date outside the range", exchange: "XNYS", exceptions: `{"date": "2026-12-01", "sessions": []}`, wantErr: "exception on 2026-12-01 is outside"},
+		{name: "exception at the exclusive end", exchange: "XNYS", exceptions: `{"date": "2026-11-21", "sessions": []}`, wantErr: "exception on 2026-11-21 is outside"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			content := `{"exchange": "` + tt.exchange + `", "from": "2026-11-16", "to": "2026-11-20", "exceptions": [` + tt.exceptions + `]}`
+			content := `{"exchange": "` + tt.exchange + `", "coverage": {"start": "2026-03-01", "end": "2026-11-21"}, "exceptions": [` + tt.exceptions + `]}`
 
 			_, err := loadTradingCalendar([]byte(content))
+			require.ErrorContains(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestLoadTradingCalendarRejectsInvalidCoverage(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		// name describes how the file's coverage is invalid.
+		name string
+
+		// content is a calendar file with the coverage under test.
+		content string
+
+		// wantErr identifies the missing or invalid field.
+		wantErr string
+	}{
+		{name: "old from and to fields", content: `{"exchange":"XNYS","from":"2026-11-16","to":"2026-11-20"}`, wantErr: `unknown field "from"`},
+		{name: "missing", content: `{"exchange":"XNYS"}`, wantErr: "coverage is missing"},
+		{name: "null", content: `{"exchange":"XNYS","coverage":null}`, wantErr: "coverage is missing"},
+		{name: "missing end", content: `{"exchange":"XNYS","coverage":{"start":"2026-11-16"}}`, wantErr: "end is required"},
+		{name: "empty range", content: `{"exchange":"XNYS","coverage":{"start":"2026-11-16","end":"2026-11-16"}}`, wantErr: "end must be after start"},
+		{name: "reversed range", content: `{"exchange":"XNYS","coverage":{"start":"2026-11-17","end":"2026-11-16"}}`, wantErr: "end must be after start"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := loadTradingCalendar([]byte(tt.content))
 			require.ErrorContains(t, err, tt.wantErr)
 		})
 	}
