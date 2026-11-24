@@ -92,7 +92,7 @@ func validateBuild(e exchange.Exchange, coverage civil.DateRange, schedules []We
 	var stray *civil.Date
 
 	for date := range exceptions {
-		if date.IsValid() && coverage.Contains(date) {
+		if date.IsValid() && coverage.ContainsDate(date) {
 			continue
 		}
 

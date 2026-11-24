@@ -10,7 +10,7 @@ require (
 )
 
 require (
-	github.com/talav/civil v0.4.0 // indirect
+	github.com/talav/civil v0.5.0 // indirect
 	github.com/talav/country v0.1.0 // indirect
 	go.uber.org/dig v1.19.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
