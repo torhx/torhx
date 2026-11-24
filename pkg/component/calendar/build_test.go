@@ -416,6 +416,11 @@ func TestBuildTradingCalendarDaysAroundAClockChange(t *testing.T) {
 			wantOpenUTC: "2026-11-02 14:30", wantDuration: 6*time.Hour + 30*time.Minute,
 		},
 		{
+			name: "year-end zone boundary with no offset change", venue: mustExchange(t, "XNYS"),
+			weekdays: workweek(), hours: regular, date: "2040-12-31",
+			wantOpenUTC: "2040-12-31 14:30", wantDuration: 6*time.Hour + 30*time.Minute,
+		},
+		{
 			name: "futures open on the Sunday the clock goes back", venue: mustExchange(t, "XCBF"),
 			weekdays: workweek(), hours: overnight, date: "2026-11-02",
 			wantOpenUTC: "2026-11-01 23:00", wantDuration: 23 * time.Hour,

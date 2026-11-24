@@ -261,20 +261,19 @@ func isRepeated(t time.Time) bool {
 	start, end := t.ZoneBounds()
 	_, offset := t.Zone()
 
-	// The same wall time under a neighbouring offset is another instant. The
-	// time is repeated when that instant lies inside the neighbour's span.
+	// ZoneBounds can mark a year boundary with the same UTC offset. Only
+	// a backward change can put the same wall time on both sides.
 	if !start.IsZero() {
 		_, before := start.Add(-time.Nanosecond).Zone()
-		if t.Add(time.Duration(offset-before) * time.Second).Before(start) {
+		if before > offset && t.Add(time.Duration(offset-before)*time.Second).Before(start) {
 			return true
 		}
 	}
 
 	if !end.IsZero() {
 		_, after := end.Zone()
-		if !t.Add(time.Duration(offset-after) * time.Second).Before(end) {
-			return true
-		}
+
+		return after < offset && !t.Add(time.Duration(offset-after)*time.Second).Before(end)
 	}
 
 	return false
