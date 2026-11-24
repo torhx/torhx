@@ -47,13 +47,13 @@ type exceptionDay struct {
 }
 
 // sessionTimes is a session as wall-clock times in the exchange's time zone.
+// Pointers distinguish missing or null fields from an explicit midnight.
 type sessionTimes struct {
-	// Open is when the session starts.
-	Open civil.Time `json:"open"`
+	// Open is the required start time.
+	Open *civil.Time `json:"open"`
 
-	// Close is when the session stops. At or before Open, it is on the next
-	// date.
-	Close civil.Time `json:"close"`
+	// Close is the required end time. At or before Open, it is on the next date.
+	Close *civil.Time `json:"close"`
 }
 
 // TradingCalendars returns the built-in calendars, one for each exchange that
@@ -159,8 +159,16 @@ func exceptionSessions(days []exceptionDay, loc *time.Location) (map[civil.Date]
 		// Present with no session, the date is closed.
 		exceptions[day.Date] = nil
 
-		for _, t := range day.Sessions {
-			s, err := Hours{kind: SessionKindRegular, start: t.Open, end: t.Close}.session(day.Date, loc)
+		for i, times := range day.Sessions {
+			if times.Open == nil {
+				return nil, fmt.Errorf("%s: session %d: open is required", day.Date, i)
+			}
+
+			if times.Close == nil {
+				return nil, fmt.Errorf("%s: session %d: close is required", day.Date, i)
+			}
+
+			s, err := Hours{kind: SessionKindRegular, start: *times.Open, end: *times.Close}.session(day.Date, loc)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", day.Date, err)
 			}

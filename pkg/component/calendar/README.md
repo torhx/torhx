@@ -38,7 +38,7 @@ Each built-in calendar is a JSON file in `data`, named after its exchange's code
 
 - A date that is not listed follows the exchange's regular hours from [github.com/torhx/exchange](https://github.com/torhx/exchange).
 - A listed date has exactly the sessions it lists, in time order. With none, it is closed.
-- Times are wall-clock times in the exchange's time zone. A close at or before its open is on the next date.
+- Each session requires both `open` and `close` in the exchange's time zone. Use `"00:00"` for midnight. A close at or before its open is on the next date.
 - Late opens and early closes are not marked: the calendar finds them by comparing a date's sessions with the regular hours.
 - `coverage.end` is the first date beyond the published or projected calendar.
 - Entries stay in date order, one per line, with a note that names the reason.

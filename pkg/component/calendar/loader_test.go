@@ -198,6 +198,63 @@ func TestLoadTradingCalendar(t *testing.T) {
 	}
 }
 
+func TestLoadTradingCalendarSessionTimes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		// name describes the session endpoints in the file.
+		name string
+
+		// session holds one element of the exception's sessions array.
+		session string
+
+		// wantOpen is the expected local opening date and time.
+		wantOpen string
+
+		// wantClose is the expected local closing date and time.
+		wantClose string
+
+		// wantErr identifies the missing endpoint.
+		wantErr string
+	}{
+		{name: "empty session", session: `{}`, wantErr: "open is required"},
+		{name: "null session", session: `null`, wantErr: "open is required"},
+		{name: "missing open", session: `{"close":"13:00"}`, wantErr: "open is required"},
+		{name: "missing close", session: `{"open":"09:30"}`, wantErr: "close is required"},
+		{name: "null open", session: `{"open":null,"close":"13:00"}`, wantErr: "open is required"},
+		{name: "null close", session: `{"open":"09:30","close":null}`, wantErr: "close is required"},
+		{name: "opens at midnight", session: `{"open":"00:00","close":"13:00"}`, wantOpen: "2026-11-17 00:00", wantClose: "2026-11-17 13:00"},
+		{name: "closes at midnight", session: `{"open":"09:30","close":"00:00"}`, wantOpen: "2026-11-17 09:30", wantClose: "2026-11-18 00:00"},
+		{name: "whole day", session: `{"open":"00:00","close":"00:00"}`, wantOpen: "2026-11-17 00:00", wantClose: "2026-11-18 00:00"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			content := `{
+				"exchange":"XNYS",
+				"coverage":{"start":"2026-11-17","end":"2026-11-18"},
+				"exceptions":[{"date":"2026-11-17","sessions":[` + tt.session + `]}]
+			}`
+			c, err := loadTradingCalendar([]byte(content))
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, "2026-11-17: session 0: "+tt.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+			day, err := c.Day(parseDate(t, "2026-11-17"))
+			require.NoError(t, err)
+			sessions := day.Sessions()
+			require.Len(t, sessions, 1)
+			assert.Equal(t, tt.wantOpen, sessions[0].Open().Format("2006-01-02 15:04"))
+			assert.Equal(t, tt.wantClose, sessions[0].Close().Format("2006-01-02 15:04"))
+		})
+	}
+}
+
 func TestLoadTradingCalendarRejects(t *testing.T) {
 	t.Parallel()
 
