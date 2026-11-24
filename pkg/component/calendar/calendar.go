@@ -12,8 +12,8 @@ import (
 )
 
 var (
-	// ErrOutOfCoverage is returned when a query asks about an instant or a
-	// date the calendar does not cover, or needs one to answer.
+	// ErrOutOfCoverage is returned when a single-date or instant query needs
+	// data beyond the calendar's coverage.
 	ErrOutOfCoverage = errors.New("outside the calendar's coverage")
 
 	// ErrNotTradingDay is returned when a query needs a date the market
@@ -24,8 +24,8 @@ var (
 // A TradingCalendar says when one market trades: an exchange, or a product
 // on it with hours of its own. It holds a day for every date from its first
 // to its last, business days, weekends and holidays alike, and that range is
-// its coverage: it knows nothing of earlier or later dates and answers
-// [ErrOutOfCoverage] for them.
+// its coverage. Single-date and instant queries return [ErrOutOfCoverage]
+// when they need a date or instant outside that coverage.
 //
 // In its queries a trading day is a date whose day is a business day.
 //
@@ -45,6 +45,10 @@ type TradingCalendar struct {
 	// exchange is the exchange the calendar belongs to. Its time zone is the
 	// calendar's.
 	exchange exchange.Exchange
+
+	// coverage runs from the first day's date up to the date after the last
+	// day, including holidays and weekends.
+	coverage civil.DateRange
 
 	// days holds one day for every date from the first to the last, in date
 	// order with no date left out, so the day of a date is found by its
@@ -70,6 +74,13 @@ func NewTradingCalendar(id ID, e exchange.Exchange, days []TradingDay) (TradingC
 	if err := c.validate(); err != nil {
 		return TradingCalendar{}, fmt.Errorf("invalid trading calendar %s: %w", id, err)
 	}
+
+	coverage, err := civil.NewDateRange(days[0].date, days[len(days)-1].date.AddDays(1))
+	if err != nil {
+		return TradingCalendar{}, fmt.Errorf("invalid coverage for calendar %s: %w", id, err)
+	}
+
+	c.coverage = coverage
 
 	// The days are rewritten only now, because showing an instant in the
 	// exchange's zone needs an exchange that has passed validation.
@@ -97,12 +108,11 @@ func (c TradingCalendar) Exchange() exchange.Exchange { return c.exchange }
 // constructor is valid.
 func (c TradingCalendar) IsValid() bool { return len(c.days) > 0 }
 
-// Coverage returns the first and the last date the calendar holds. It
-// answers for the dates from one to the other, and for the instants from the
-// first business day's first open up to the last business day's last close.
-func (c TradingCalendar) Coverage() (from, to civil.Date) {
-	return c.days[0].date, c.days[len(c.days)-1].date
-}
+// Coverage returns the range of dates the calendar holds. Its start is the
+// first calendar date and its end is the day after the last. The zero
+// calendar has a zero range. Instant queries include the first business
+// day's first open and exclude the last business day's last close.
+func (c TradingCalendar) Coverage() civil.DateRange { return c.coverage }
 
 // SessionAt returns the session of any kind that is open at the instant t.
 // It reports false in a break or any other gap between sessions.
@@ -258,7 +268,7 @@ func (c TradingCalendar) Day(d civil.Date) (TradingDay, error) {
 		return TradingDay{}, ErrOutOfCoverage
 	}
 
-	return c.days[d.DaysSince(c.days[0].date)], nil
+	return c.days[d.DaysSince(c.coverage.Start())], nil
 }
 
 // IsTradingDay reports whether the market trades on d.
@@ -322,33 +332,27 @@ func (c TradingCalendar) TradingDayOffset(d civil.Date, n int) (civil.Date, erro
 	return c.businessDay(target).date, nil
 }
 
-// TradingDaysBetween returns the trading days from from to to, both
-// included, in date order.
+// TradingDaysBetween returns the trading days in period, in date order.
+// The start is included and the end is excluded.
 //
-// It returns [ErrOutOfCoverage] if either date is outside coverage, and an
-// error if from is after to.
-func (c TradingCalendar) TradingDaysBetween(from, to civil.Date) ([]civil.Date, error) {
-	if from.After(to) {
-		return nil, fmt.Errorf("trading days between %s and %s: the first date is after the second", from, to)
+// It returns an empty slice if period has no trading days, is the zero
+// range, or extends outside coverage. A partial list would undercount the
+// trading days in a period the calendar cannot fully answer for.
+func (c TradingCalendar) TradingDaysBetween(period civil.DateRange) []civil.Date {
+	if !period.IsValid() || period.Start().Before(c.coverage.Start()) || period.End().After(c.coverage.End()) {
+		return []civil.Date{}
 	}
 
-	if !c.coversDate(from) || !c.coversDate(to) {
-		return nil, ErrOutOfCoverage
+	first, _ := c.businessIndexOn(period.Start())
+	after, _ := c.businessIndexOn(period.End())
+	business := c.business[first:after]
+
+	dates := make([]civil.Date, len(business))
+	for i, dayIndex := range business {
+		dates[i] = c.days[dayIndex].date
 	}
 
-	first, _ := c.businessIndexOn(from)
-	last, ok := c.businessIndexOn(to)
-
-	if ok {
-		last++
-	}
-
-	dates := make([]civil.Date, 0, last-first)
-	for _, i := range c.business[first:last] {
-		dates = append(dates, c.days[i].date)
-	}
-
-	return dates, nil
+	return dates
 }
 
 //nolint:cyclop // one flat list of checks reads better than a split
@@ -419,12 +423,9 @@ func (c TradingCalendar) coversInstant(t time.Time) bool {
 	return !t.Before(c.businessDay(0).firstOpen()) && t.Before(c.businessDay(len(c.business)-1).lastClose())
 }
 
-// coversDate reports whether d is from the first day's date to the last
-// day's.
+// coversDate excludes the zero date even when coverage spans year zero.
 func (c TradingCalendar) coversDate(d civil.Date) bool {
-	from, to := c.Coverage()
-
-	return !d.Before(from) && !d.After(to)
+	return d.IsValid() && c.coverage.Contains(d)
 }
 
 // businessIndexAt returns the position among the business days of the first
