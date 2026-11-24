@@ -339,7 +339,7 @@ func (c TradingCalendar) TradingDayOffset(d civil.Date, n int) (civil.Date, erro
 // range, or extends outside coverage. A partial list would undercount the
 // trading days in a period the calendar cannot fully answer for.
 func (c TradingCalendar) TradingDaysBetween(period civil.DateRange) []civil.Date {
-	if !period.IsValid() || period.Start().Before(c.coverage.Start()) || period.End().After(c.coverage.End()) {
+	if !period.IsValid() || !c.coverage.Contains(period) {
 		return []civil.Date{}
 	}
 
@@ -425,7 +425,7 @@ func (c TradingCalendar) coversInstant(t time.Time) bool {
 
 // coversDate excludes the zero date even when coverage spans year zero.
 func (c TradingCalendar) coversDate(d civil.Date) bool {
-	return d.IsValid() && c.coverage.Contains(d)
+	return d.IsValid() && c.coverage.ContainsDate(d)
 }
 
 // businessIndexAt returns the position among the business days of the first
