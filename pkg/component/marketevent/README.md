@@ -18,24 +18,19 @@ An event's subject is a region or a stock. A region is a country, or a currency 
 
 Every timing carries a `civil.LocationDate`, the event's calendar date in its source's named time zone. For a source that reports only a date, pass that day to `NewDateTiming`, `NewBeforeMarketTiming` or `NewAfterMarketTiming` according to what the source states.
 
-For an exact instant reported against an exchange, use the exchange from its trading calendar to find the local date.
+For an exact timestamp reported against an exchange, the exchange supplies its local date and time zone.
 
 ```go
-venue := xnys.Exchange()
-day, err := civil.NewLocationDate(venue.DateOf(instant), venue.TimeZone())
-if err != nil {
-	return err
-}
-release, err := marketevent.NewExactTiming(instant, day)
+release, err := marketevent.NewExactTimingForExchange(instant, xnys.Exchange())
 ```
 
-`NewExactTiming` checks that the instant falls on the given day in its zone. Events on the same local date can reuse the same `civil.LocationDate`. `Timing.LocationDate()` returns that value, and `Date()` and `Location()` return its parts.
+When the source gives a local date and zone alongside the instant, `NewExactTiming(instant, day)` checks that they agree. Events on the same local date can reuse the same `civil.LocationDate`. `Timing.LocationDate()` returns that value, and `Date()` and `Location()` return its parts.
 
 - A flag is what the source states about the regular session of the event's own market: for a company event, the market its stock trades on. It is kept and never worked out.
-- To check whether a market was trading at an exact instant, pass it to `TradingCalendar.SessionAt`. The calendar accounts for that exchange's holidays and early closes. [Trading calendars](../calendar)
+- For an exact instant, `TradingCalendar.SessionAt` reports the active session, taking holidays and early closes into account. `TradingCalendar.DayAt` returns the trading day that owns an open session. An overnight session can belong to the following date. [Trading calendars](../calendar)
 - A date without a flag says nothing about the time of day. It does not mean during market hours.
-- An event after the market closes keeps its date, though trading on it starts on the next trading day.
-- A dividend's and a split's timing is the ex-date, a date alone: `NewDividend` and `NewSplit` refuse an exact timing and a date with a flag.
+- An after-close event keeps its local date. An extended session may still be open after the regular close.
+- Pass the ex-date directly to `NewDividend(stock, exDate, amount)` or `NewSplit(stock, exDate, factor)` as a `civil.LocationDate`. Their `Timing()` exposes that date and zone.
 
 ## Reading
 

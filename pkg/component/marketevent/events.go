@@ -85,7 +85,7 @@ func (es Events) For(subject Subject) Events {
 // On returns the events of date. The result covers that date alone, or no
 // date when this Events does not cover it.
 func (es Events) On(date civil.Date) Events {
-	if !date.IsValid() {
+	if !date.IsValid() || !es.coverage.IsValid() || !es.coverage.ContainsDate(date) {
 		return Events{}
 	}
 
@@ -94,7 +94,7 @@ func (es Events) On(date civil.Date) Events {
 		return Events{}
 	}
 
-	return es.During(day)
+	return es.withCoverage(day)
 }
 
 // During returns the events in the intersection of dates and the collection's
@@ -105,12 +105,16 @@ func (es Events) During(dates civil.DateRange) Events {
 		return Events{}
 	}
 
+	if dates.Contains(es.coverage) {
+		return es
+	}
+
 	coverage, ok := es.coverage.Intersect(dates)
 	if !ok {
 		return Events{}
 	}
 
-	return Events{byDate: dated(es.byDate, coverage), bySubject: es.bySubject, coverage: coverage}
+	return es.withCoverage(coverage)
 }
 
 // OfKind returns the events of any of kinds, or every event when kinds is
@@ -195,6 +199,12 @@ func (es Events) validate() error {
 	}
 
 	return nil
+}
+
+// withCoverage narrows the date index to a range within the current coverage.
+// For applies the same bounds when it reads the shared subject index.
+func (es Events) withCoverage(coverage civil.DateRange) Events {
+	return Events{byDate: dated(es.byDate, coverage), bySubject: es.bySubject, coverage: coverage}
 }
 
 // sortedBySubject returns a copy of byDate, which is in order of date, in

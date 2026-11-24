@@ -92,7 +92,7 @@ func mustSchedule(t *testing.T) schedule {
 	afterMarket, err := marketevent.NewAfterMarketTiming(mustLocationDate(t, busyDay, newYork))
 	require.NoError(t, err)
 
-	dividend, err := marketevent.NewDividend(mustFIGI(t, aaplFIGI), mustDateTiming(t, dividendDay), 0.205)
+	dividend, err := marketevent.NewDividend(mustFIGI(t, aaplFIGI), mustLocationDate(t, dividendDay, newYork), 0.205)
 	require.NoError(t, err)
 
 	repurchase, err := marketevent.NewCompanyEvent(mustFIGI(t, aaplFIGI), mustDateTiming(t, busyDay), "buyback")
@@ -379,19 +379,22 @@ func TestEventsWithTradingCalendar(t *testing.T) {
 	// The Friday after Thanksgiving in 2021 closed at 13:00 New York time.
 	at := time.Date(2021, time.November, 26, 18, 30, 0, 0, time.UTC)
 	venue := xnys.Exchange()
-	day, err := civil.NewLocationDate(venue.DateOf(at), venue.TimeZone())
-	require.NoError(t, err)
-	timing, err := marketevent.NewExactTiming(at, day)
+	timing, err := marketevent.NewExactTimingForExchange(at, venue)
 	require.NoError(t, err)
 	report, err := marketevent.NewEarnings(mustFIGI(t, aaplFIGI), timing)
 	require.NoError(t, err)
 
-	events, err := marketevent.NewEvents([]marketevent.Event{report}, xnys.Coverage())
+	// The event feed also covers Thanksgiving, when XNYS was closed.
+	feed := mustDateRange(t, "[2021-11-25,2021-11-27)")
+	events, err := marketevent.NewEvents([]marketevent.Event{report}, feed)
 	require.NoError(t, err)
-	onDay := events.On(day.Date())
-	reports := slices.Collect(onDay.Of[marketevent.Earnings]())
+	shared := events.During(xnys.Coverage())
+	assert.Equal(t, feed, shared.Coverage())
+
+	friday := mustDate(t, "2021-11-26")
+	assert.Equal(t, []civil.Date{friday}, xnys.TradingDaysBetween(shared.Coverage()))
+	reports := slices.Collect(shared.On(friday).Of[marketevent.Earnings]())
 	require.Len(t, reports, 1)
-	assert.Equal(t, []civil.Date{day.Date()}, xnys.TradingDaysBetween(onDay.Coverage()))
 
 	instant, exact := reports[0].Timing().Instant()
 	require.True(t, exact)

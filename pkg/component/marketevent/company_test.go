@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/talav/civil"
 	"github.com/torhx/identifier"
 
 	"github.com/torhx/torhx/pkg/component/marketevent"
@@ -48,6 +49,17 @@ func mustTimings(t *testing.T) timings {
 		afterMarket:  afterMarket,
 		exact:        exact,
 	}
+}
+
+// assertExDate checks the date and zone exposed through the Event interface.
+func assertExDate(t *testing.T, want civil.LocationDate, timing marketevent.Timing) {
+	t.Helper()
+
+	assert.True(t, want.Equal(timing.LocationDate()))
+	_, exact := timing.Instant()
+	assert.False(t, exact)
+	_, flagged := timing.Flag()
+	assert.False(t, flagged)
 }
 
 func TestNewEarnings(t *testing.T) {
@@ -95,14 +107,14 @@ func TestNewDividend(t *testing.T) {
 	t.Parallel()
 
 	aapl := mustFIGI(t, aaplFIGI)
-	exDate := mustDateTiming(t, "2021-02-05")
+	exDate := mustLocationDate(t, "2021-02-05", newYork)
 
 	dividend, err := marketevent.NewDividend(aapl, exDate, 0.205)
 	require.NoError(t, err)
 
 	assert.Equal(t, aapl, dividend.Stock())
 	assert.Equal(t, mustStockSubject(t, aaplFIGI), dividend.Subject())
-	assert.Equal(t, exDate, dividend.Timing())
+	assertExDate(t, exDate, dividend.Timing())
 	assert.Equal(t, "dividend", dividend.Kind())
 	assert.InDelta(t, 0.205, dividend.Amount(), 0)
 }
@@ -111,31 +123,28 @@ func TestNewDividendRejects(t *testing.T) {
 	t.Parallel()
 
 	aapl := mustFIGI(t, aaplFIGI)
-	on := mustTimings(t)
+	day := mustLocationDate(t, "2021-02-05", newYork)
 
 	tests := []struct {
 		name    string
 		stock   identifier.FIGI
-		timing  marketevent.Timing
+		exDate  civil.LocationDate
 		amount  float64
 		wantErr string
 	}{
-		{name: "zero stock", stock: identifier.FIGI{}, timing: on.date, amount: 0.205, wantErr: "stock is missing"},
-		{name: "zero timing", stock: aapl, timing: marketevent.Timing{}, amount: 0.205, wantErr: "timing is missing"},
-		{name: "exact timing", stock: aapl, timing: on.exact, amount: 0.205, wantErr: "ex-date is an exact time"},
-		{name: "before market", stock: aapl, timing: on.beforeMarket, amount: 0.205, wantErr: "ex-date has the flag BeforeMarket"},
-		{name: "after market", stock: aapl, timing: on.afterMarket, amount: 0.205, wantErr: "ex-date has the flag AfterMarket"},
-		{name: "zero amount", stock: aapl, timing: on.date, amount: 0, wantErr: "not positive and finite"},
-		{name: "negative amount", stock: aapl, timing: on.date, amount: -0.205, wantErr: "not positive and finite"},
-		{name: "amount that is not a number", stock: aapl, timing: on.date, amount: math.NaN(), wantErr: "not positive and finite"},
-		{name: "infinite amount", stock: aapl, timing: on.date, amount: math.Inf(1), wantErr: "not positive and finite"},
+		{name: "zero stock", stock: identifier.FIGI{}, exDate: day, amount: 0.205, wantErr: "stock is missing"},
+		{name: "missing ex-date", stock: aapl, amount: 0.205, wantErr: "ex-date is missing"},
+		{name: "zero amount", stock: aapl, exDate: day, amount: 0, wantErr: "not positive and finite"},
+		{name: "negative amount", stock: aapl, exDate: day, amount: -0.205, wantErr: "not positive and finite"},
+		{name: "amount that is not a number", stock: aapl, exDate: day, amount: math.NaN(), wantErr: "not positive and finite"},
+		{name: "infinite amount", stock: aapl, exDate: day, amount: math.Inf(1), wantErr: "not positive and finite"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := marketevent.NewDividend(tt.stock, tt.timing, tt.amount)
+			_, err := marketevent.NewDividend(tt.stock, tt.exDate, tt.amount)
 			require.ErrorContains(t, err, tt.wantErr)
 		})
 	}
@@ -145,14 +154,14 @@ func TestNewSplit(t *testing.T) {
 	t.Parallel()
 
 	aapl := mustFIGI(t, aaplFIGI)
-	exDate := mustDateTiming(t, "2020-08-31")
+	exDate := mustLocationDate(t, "2020-08-31", newYork)
 
 	split, err := marketevent.NewSplit(aapl, exDate, 0.25)
 	require.NoError(t, err)
 
 	assert.Equal(t, aapl, split.Stock())
 	assert.Equal(t, mustStockSubject(t, aaplFIGI), split.Subject())
-	assert.Equal(t, exDate, split.Timing())
+	assertExDate(t, exDate, split.Timing())
 	assert.Equal(t, "split", split.Kind())
 	assert.InDelta(t, 0.25, split.Factor(), 0)
 }
@@ -161,32 +170,29 @@ func TestNewSplitRejects(t *testing.T) {
 	t.Parallel()
 
 	aapl := mustFIGI(t, aaplFIGI)
-	on := mustTimings(t)
+	day := mustLocationDate(t, "2020-08-31", newYork)
 
 	tests := []struct {
 		name    string
 		stock   identifier.FIGI
-		timing  marketevent.Timing
+		exDate  civil.LocationDate
 		factor  float64
 		wantErr string
 	}{
-		{name: "zero stock", stock: identifier.FIGI{}, timing: on.date, factor: 0.25, wantErr: "stock is missing"},
-		{name: "zero timing", stock: aapl, timing: marketevent.Timing{}, factor: 0.25, wantErr: "timing is missing"},
-		{name: "exact timing", stock: aapl, timing: on.exact, factor: 0.25, wantErr: "ex-date is an exact time"},
-		{name: "before market", stock: aapl, timing: on.beforeMarket, factor: 0.25, wantErr: "ex-date has the flag BeforeMarket"},
-		{name: "after market", stock: aapl, timing: on.afterMarket, factor: 0.25, wantErr: "ex-date has the flag AfterMarket"},
-		{name: "zero factor", stock: aapl, timing: on.date, factor: 0, wantErr: "not positive and finite"},
-		{name: "negative factor", stock: aapl, timing: on.date, factor: -0.25, wantErr: "not positive and finite"},
-		{name: "factor that is not a number", stock: aapl, timing: on.date, factor: math.NaN(), wantErr: "not positive and finite"},
-		{name: "infinite factor", stock: aapl, timing: on.date, factor: math.Inf(1), wantErr: "not positive and finite"},
-		{name: "factor of one", stock: aapl, timing: on.date, factor: 1, wantErr: "factor 1 changes no price"},
+		{name: "zero stock", stock: identifier.FIGI{}, exDate: day, factor: 0.25, wantErr: "stock is missing"},
+		{name: "missing ex-date", stock: aapl, factor: 0.25, wantErr: "ex-date is missing"},
+		{name: "zero factor", stock: aapl, exDate: day, factor: 0, wantErr: "not positive and finite"},
+		{name: "negative factor", stock: aapl, exDate: day, factor: -0.25, wantErr: "not positive and finite"},
+		{name: "factor that is not a number", stock: aapl, exDate: day, factor: math.NaN(), wantErr: "not positive and finite"},
+		{name: "infinite factor", stock: aapl, exDate: day, factor: math.Inf(1), wantErr: "not positive and finite"},
+		{name: "factor of one", stock: aapl, exDate: day, factor: 1, wantErr: "factor 1 changes no price"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := marketevent.NewSplit(tt.stock, tt.timing, tt.factor)
+			_, err := marketevent.NewSplit(tt.stock, tt.exDate, tt.factor)
 			require.ErrorContains(t, err, tt.wantErr)
 		})
 	}

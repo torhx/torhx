@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/talav/civil"
+	"github.com/torhx/exchange"
 )
 
 // Timing is when an event happens: an exact date and time, or a date alone,
@@ -44,6 +45,29 @@ func NewExactTiming(t time.Time, day civil.LocationDate) (Timing, error) {
 	}
 
 	return timing, nil
+}
+
+// NewExactTimingForExchange dates the instant t in the venue's time zone,
+// including on holidays and outside trading hours.
+//
+// It returns an error if t or venue is the zero value, or if the venue's
+// time zone cannot be used for a [civil.LocationDate].
+func NewExactTimingForExchange(t time.Time, venue exchange.Exchange) (Timing, error) {
+	if !venue.IsValid() {
+		return Timing{}, errors.New("invalid exact timing: exchange is missing")
+	}
+
+	// time.Local can report a different IANA name on each machine.
+	if venue.Location() == time.Local {
+		return Timing{}, fmt.Errorf("invalid exact timing on %s: exchange uses the machine's local time zone", venue)
+	}
+
+	day, err := civil.NewLocationDate(venue.DateOf(t), venue.TimeZone())
+	if err != nil {
+		return Timing{}, fmt.Errorf("date instant %s on %s: %w", t, venue, err)
+	}
+
+	return NewExactTiming(t, day)
 }
 
 // NewDateTiming returns the timing of day, a date in a zone, without a flag.
@@ -155,8 +179,7 @@ const (
 	// FlagBeforeMarket says that the event comes before the market opens.
 	FlagBeforeMarket Flag = "BeforeMarket"
 
-	// FlagAfterMarket says that the event comes after the market closes. The
-	// event keeps its date, though trading on it starts on the next trading
-	// day.
+	// FlagAfterMarket says that the event comes after the regular close on
+	// its local date. An extended session may still be trading.
 	FlagAfterMarket Flag = "AfterMarket"
 )
