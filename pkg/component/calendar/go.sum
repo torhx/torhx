@@ -1,10 +1,10 @@
 github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE=
 github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
-github.com/talav/civil v0.5.0 h1:YAoxaYTSai4ODqOLQy97XhV1IxaXRdAkVSOK9/gh7aY=
-github.com/talav/civil v0.5.0/go.mod h1:3mC8QEZ+A1pSdDfvpHjgX+hCYVQIskdqzlVCb+qCLHo=
+github.com/talav/civil v0.6.0 h1:e243x6xN3wAhuyVv8znP7XNsYyGgNOKndIUf/bilvqs=
+github.com/talav/civil v0.6.0/go.mod h1:3mC8QEZ+A1pSdDfvpHjgX+hCYVQIskdqzlVCb+qCLHo=
 github.com/talav/country v0.1.0 h1:FMNfKO6ysoXUrYf14vLcqowh6nOIGWnIe68iuFKVgHk=
 github.com/talav/country v0.1.0/go.mod h1:Uf5LfxguYN3/TldwW42aqnIHhDH87HaGLL5rPqh1biw=
-github.com/torhx/exchange v0.2.1 h1:AKDymR0nEAf5ZrNVPUQ7BeQMoKTwd8ELg2bNoi6hH78=
-github.com/torhx/exchange v0.2.1/go.mod h1:YtRD7aox6hZyd4GGx3jifCxWQmHbC/+rlitFAjByS7g=
+github.com/torhx/exchange v0.2.2 h1:+hSl/+pbdUU5J91KZl4mb/9TUlZiL1daLBlxCf2PPQ8=
+github.com/torhx/exchange v0.2.2/go.mod h1:QYBhJayEkldLZuuSzLAlKfTtw8Akf8Jjjtj7Z+eOSyY=
 go.yaml.in/yaml/v3 v3.0.5 h1:N6y/pJk8buWs9NY5ERU2HSMfm+IuD/OtfdAnq6kESPw=
 go.yaml.in/yaml/v3 v3.0.5/go.mod h1:HVTZu1O7/Vkt2N+BFy8Zza+lnLsABggaTM2ZpNIGuKg=

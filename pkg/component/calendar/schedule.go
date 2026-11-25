@@ -79,13 +79,13 @@ func (h Hours) validate() error {
 // the session starts, on a day without a clock change. It is negative for a
 // session that starts before that date.
 func (h Hours) startOffset() time.Duration {
-	return sinceMidnight(h.start) - time.Duration(h.daysBefore)*hoursPerDay*time.Hour
+	return h.start.SinceMidnight() - time.Duration(h.daysBefore)*hoursPerDay*time.Hour
 }
 
 // endOffset returns how long after the first midnight of its day's date the
 // session ends, on a day without a clock change.
 func (h Hours) endOffset() time.Duration {
-	offset := h.startOffset() - sinceMidnight(h.start) + sinceMidnight(h.end)
+	offset := h.startOffset() - h.start.SinceMidnight() + h.end.SinceMidnight()
 	if h.endsNextDate() {
 		offset += hoursPerDay * time.Hour
 	}
@@ -224,7 +224,7 @@ func instantAt(date civil.Date, t civil.Time, loc *time.Location) (time.Time, er
 		return startOfDate(date, loc), nil
 	}
 
-	instant := date.At(t, loc)
+	instant := date.At(t).In(loc)
 
 	// time.Date moves a time the zone skips to a nearby one that exists, so
 	// the clock then shows something other than what was asked for.
@@ -277,12 +277,4 @@ func isRepeated(t time.Time) bool {
 	}
 
 	return false
-}
-
-// sinceMidnight returns how far into the day t is.
-func sinceMidnight(t civil.Time) time.Duration {
-	return time.Duration(t.Hour())*time.Hour +
-		time.Duration(t.Minute())*time.Minute +
-		time.Duration(t.Second())*time.Second +
-		time.Duration(t.Nanosecond())
 }
