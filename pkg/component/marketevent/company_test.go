@@ -136,6 +136,7 @@ func TestNewDividendRejects(t *testing.T) {
 	}{
 		{name: "zero stock", stock: identifier.FIGI{}, exDate: day, amount: 0.205, wantErr: "stock is missing"},
 		{name: "missing ex-date", stock: aapl, amount: 0.205, wantErr: "ex-date is missing"},
+		{name: "ex-date without a time zone", stock: aapl, exDate: day.Date().In(nil), amount: 0.205, wantErr: "ex-date is missing"},
 		{name: "zero amount", stock: aapl, exDate: day, amount: 0, wantErr: "not positive and finite"},
 		{name: "negative amount", stock: aapl, exDate: day, amount: -0.205, wantErr: "not positive and finite"},
 		{name: "amount that is not a number", stock: aapl, exDate: day, amount: math.NaN(), wantErr: "not positive and finite"},
@@ -183,6 +184,7 @@ func TestNewSplitRejects(t *testing.T) {
 	}{
 		{name: "zero stock", stock: identifier.FIGI{}, exDate: day, factor: 0.25, wantErr: "stock is missing"},
 		{name: "missing ex-date", stock: aapl, factor: 0.25, wantErr: "ex-date is missing"},
+		{name: "ex-date without a time zone", stock: aapl, exDate: day.Date().In(nil), factor: 0.25, wantErr: "ex-date is missing"},
 		{name: "zero factor", stock: aapl, exDate: day, factor: 0, wantErr: "not positive and finite"},
 		{name: "negative factor", stock: aapl, exDate: day, factor: -0.25, wantErr: "not positive and finite"},
 		{name: "factor that is not a number", stock: aapl, exDate: day, factor: math.NaN(), wantErr: "not positive and finite"},

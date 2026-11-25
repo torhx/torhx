@@ -32,12 +32,11 @@ type Timing struct {
 // NewExactTiming returns the instant t and its calendar date in t's location.
 // It returns an error if t is the zero time.
 func NewExactTiming(t time.Time) (Timing, error) {
-	timing := Timing{locationDate: civil.NewLocationDateFromTime(t), instant: &t}
-	if err := timing.validate(); err != nil {
-		return Timing{}, fmt.Errorf("invalid exact timing %s: %w", t, err)
+	if t.IsZero() {
+		return Timing{}, fmt.Errorf("invalid exact timing %s: instant is missing", t)
 	}
 
-	return timing, nil
+	return Timing{locationDate: civil.NewLocationDateFromTime(t), instant: &t}, nil
 }
 
 // NewDateTiming returns the timing of day, a date in a zone, without a flag.
@@ -115,10 +114,6 @@ func (t Timing) IsValid() bool { return t.locationDate.IsValid() }
 func (t Timing) validate() error {
 	if !t.locationDate.IsValid() {
 		return errors.New("date is missing")
-	}
-
-	if t.instant != nil && t.instant.IsZero() {
-		return errors.New("instant is missing")
 	}
 
 	return nil

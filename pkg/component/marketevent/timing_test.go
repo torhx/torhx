@@ -129,6 +129,10 @@ func TestNewDateTimings(t *testing.T) {
 
 			_, err = tt.build(civil.LocationDate{})
 			require.ErrorContains(t, err, "date is missing")
+
+			missingZone, err := tt.build(day.Date().In(nil))
+			require.ErrorContains(t, err, "date is missing")
+			assert.False(t, missingZone.IsValid())
 		})
 	}
 
