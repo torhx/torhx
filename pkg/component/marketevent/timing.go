@@ -30,14 +30,9 @@ type Timing struct {
 }
 
 // NewExactTiming returns the instant t dated in its own named time zone.
-// It returns an error for the zero instant, [time.Local], an unnamed or
-// unknown zone, or an offset that disagrees with the named zone at t.
+// It returns an error if t is zero, [civil.NewLocationDate] rejects its
+// zone name, or its offset disagrees with the named zone at t.
 func NewExactTiming(t time.Time) (Timing, error) {
-	// time.Local can report a different IANA name on each machine.
-	if t.Location() == time.Local {
-		return Timing{}, errors.New("invalid exact timing: instant uses the machine's local time zone")
-	}
-
 	day, err := civil.NewLocationDate(civil.NewDateFromTime(t), t.Location().String())
 	if err != nil {
 		return Timing{}, fmt.Errorf("invalid exact timing %s: %w", t, err)

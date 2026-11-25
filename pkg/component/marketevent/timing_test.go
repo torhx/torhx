@@ -80,6 +80,22 @@ func TestNewExactTiming(t *testing.T) {
 	}
 }
 
+func TestNewExactTimingLocal(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2021, time.February, 5, 12, 0, 0, 0, time.Local)
+	want, zoneErr := civil.NewLocationDate(mustDate(t, "2021-02-05"), time.Local.String())
+	timing, err := marketevent.NewExactTiming(at)
+	if zoneErr != nil {
+		require.ErrorContains(t, err, zoneErr.Error())
+
+		return
+	}
+
+	require.NoError(t, err)
+	assert.True(t, want.Equal(timing.LocationDate()))
+}
+
 func TestNewExactTimingRejects(t *testing.T) {
 	t.Parallel()
 
@@ -91,7 +107,6 @@ func TestNewExactTimingRejects(t *testing.T) {
 		wantErr string
 	}{
 		{name: "zero time", wantErr: "instant is missing"},
-		{name: "machine-local time", at: at.In(time.Local), wantErr: "machine's local time zone"},
 		{name: "numeric offset alone", at: at.In(time.FixedZone("", -5*60*60)), wantErr: "zone must not be empty"},
 		{name: "unknown zone name", at: at.In(time.FixedZone("Unknown/Zone", 0)), wantErr: "invalid zone"},
 		{
