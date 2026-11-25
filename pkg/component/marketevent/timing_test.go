@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/talav/civil"
-	"github.com/torhx/exchange"
 
 	"github.com/torhx/torhx/pkg/component/marketevent"
 )
@@ -109,57 +108,6 @@ func TestNewExactTimingRejects(t *testing.T) {
 			timing, err := marketevent.NewExactTiming(tt.at)
 			require.ErrorContains(t, err, tt.wantErr)
 			assert.False(t, timing.IsValid())
-		})
-	}
-}
-
-func TestNewExactTimingForExchange(t *testing.T) {
-	t.Parallel()
-
-	xnys, err := exchange.NewExchangeFromCode(exchange.XNYS)
-	require.NoError(t, err)
-	xtks, err := exchange.NewExchangeFromCode(exchange.XTKS)
-	require.NoError(t, err)
-	local, err := exchange.NewExchange(xnys.Code(), xnys.Name(), xnys.Country(), "Local", xnys.Weekdays(), xnys.Sessions())
-	require.NoError(t, err)
-
-	at := time.Date(2021, time.February, 5, 1, 30, 0, 123, time.UTC)
-	tests := []struct {
-		name    string
-		at      time.Time
-		venue   exchange.Exchange
-		date    string
-		wantErr string
-	}{
-		{name: "previous date in New York", at: at, venue: xnys, date: "2021-02-04"},
-		{name: "timestamp with only a numeric offset", at: at.In(time.FixedZone("", 9*60*60)), venue: xnys, date: "2021-02-04"},
-		{name: "Saturday in Tokyo", at: at.Add(22 * time.Hour), venue: xtks, date: "2021-02-06"},
-		{name: "missing exchange", at: at, wantErr: "exchange is missing"},
-		{name: "machine-local exchange", at: at, venue: local, wantErr: "machine's local time zone"},
-		{name: "missing instant", venue: xnys, wantErr: "instant is missing"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			timing, err := marketevent.NewExactTimingForExchange(tt.at, tt.venue)
-			if tt.wantErr != "" {
-				require.ErrorContains(t, err, tt.wantErr)
-				assert.False(t, timing.IsValid())
-
-				return
-			}
-
-			require.NoError(t, err)
-			instant, exact := timing.Instant()
-			require.True(t, exact)
-			assert.True(t, tt.at.Equal(instant))
-			assert.Equal(t, tt.venue.TimeZone(), instant.Location().String())
-			assert.Equal(t, mustDate(t, tt.date), timing.Date())
-
-			_, flagged := timing.Flag()
-			assert.False(t, flagged)
 		})
 	}
 }

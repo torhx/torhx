@@ -11,7 +11,6 @@ import (
 	"github.com/talav/civil"
 	"github.com/talav/country"
 
-	"github.com/torhx/torhx/pkg/component/calendar"
 	"github.com/torhx/torhx/pkg/component/marketevent"
 )
 
@@ -334,6 +333,23 @@ func TestEventsOn(t *testing.T) {
 	}
 }
 
+func TestEventsOnLocalDate(t *testing.T) {
+	t.Parallel()
+
+	loc, err := time.LoadLocation(newYork)
+	require.NoError(t, err)
+	at := time.Date(2021, time.November, 27, 1, 30, 0, 0, time.UTC)
+	timing, err := marketevent.NewExactTiming(at.In(loc))
+	require.NoError(t, err)
+	report, err := marketevent.NewEarnings(mustFIGI(t, aaplFIGI), timing)
+	require.NoError(t, err)
+	events, err := marketevent.NewEvents([]marketevent.Event{report}, mustDateRange(t, "[2021-11-26,2021-11-28)"))
+	require.NoError(t, err)
+
+	assertEvents(t, []marketevent.Event{report}, events.On(mustDate(t, "2021-11-26")))
+	assertEvents(t, nil, events.On(mustDate(t, "2021-11-27")))
+}
+
 func TestEventsDuring(t *testing.T) {
 	t.Parallel()
 
@@ -362,49 +378,6 @@ func TestEventsDuring(t *testing.T) {
 			assertEvents(t, tt.want, s.events.During(tt.dates))
 		})
 	}
-}
-
-func TestEventsWithTradingCalendar(t *testing.T) {
-	t.Parallel()
-
-	calendars, err := calendar.TradingCalendars()
-	require.NoError(t, err)
-	registry, err := calendar.NewRegistry(calendars)
-	require.NoError(t, err)
-	id, err := calendar.NewID("XNYS")
-	require.NoError(t, err)
-	xnys, err := registry.Get(id)
-	require.NoError(t, err)
-
-	// The Friday after Thanksgiving in 2021 closed at 13:00 New York time.
-	at := time.Date(2021, time.November, 26, 18, 30, 0, 0, time.UTC)
-	venue := xnys.Exchange()
-	timing, err := marketevent.NewExactTimingForExchange(at, venue)
-	require.NoError(t, err)
-	report, err := marketevent.NewEarnings(mustFIGI(t, aaplFIGI), timing)
-	require.NoError(t, err)
-
-	// The event feed also covers Thanksgiving, when XNYS was closed.
-	feed := mustDateRange(t, "[2021-11-25,2021-11-27)")
-	events, err := marketevent.NewEvents([]marketevent.Event{report}, feed)
-	require.NoError(t, err)
-	shared := events.During(xnys.Coverage())
-	assert.Equal(t, feed, shared.Coverage())
-
-	friday := mustDate(t, "2021-11-26")
-	assert.Equal(t, []civil.Date{friday}, xnys.TradingDaysBetween(shared.Coverage()))
-	reports := slices.Collect(shared.On(friday).Of[marketevent.Earnings]())
-	require.Len(t, reports, 1)
-
-	instant, exact := reports[0].Timing().Instant()
-	require.True(t, exact)
-	assert.True(t, venue.IsRegularHours(instant))
-	_, open, err := xnys.SessionAt(instant)
-	require.NoError(t, err)
-	assert.False(t, open)
-
-	_, flagged := reports[0].Timing().Flag()
-	assert.False(t, flagged)
 }
 
 func TestEventsFor(t *testing.T) {

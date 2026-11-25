@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/talav/civil"
-	"github.com/torhx/exchange"
 )
 
 // Timing is when an event happens: an exact date and time, or a date alone,
@@ -61,19 +60,6 @@ func NewExactTiming(t time.Time) (Timing, error) {
 	}
 
 	return timing, nil
-}
-
-// NewExactTimingForExchange dates the instant t in the venue's time zone,
-// including on holidays and outside trading hours.
-//
-// It returns an error if t or venue is the zero value, or if the venue's
-// time zone cannot be used for a [civil.LocationDate].
-func NewExactTimingForExchange(t time.Time, venue exchange.Exchange) (Timing, error) {
-	if !venue.IsValid() {
-		return Timing{}, errors.New("invalid exact timing: exchange is missing")
-	}
-
-	return NewExactTiming(t.In(venue.Location()))
 }
 
 // NewDateTiming returns the timing of day, a date in a zone, without a flag.
