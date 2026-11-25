@@ -16,15 +16,15 @@ An event's subject is a region or a stock. A region is a country, or a currency 
 
 ## Timing
 
-Every timing carries a `civil.LocationDate`, the event's calendar date in its source's named time zone. For a source that reports only a date, pass that day to `NewDateTiming`, `NewBeforeMarketTiming` or `NewAfterMarketTiming` according to what the source states.
+Every timing carries a `civil.LocationDate`, the event's calendar date in its reporting location. For a date-only source, pass `date.In(location)` to `NewDateTiming`, `NewBeforeMarketTiming` or `NewAfterMarketTiming` according to what the source states.
 
-For an exact timestamp, `NewExactTiming(instant)` uses the date in the timestamp's own named time zone. To use a different reporting zone, convert the timestamp first.
+`NewExactTiming(instant)` keeps the timestamp and its location, including `time.Local` and fixed offsets. To use a different reporting zone, convert the timestamp first.
 
 ```go
 timing, err := marketevent.NewExactTiming(instant.In(reportingZone))
 ```
 
-For a timestamp with only a numeric offset, choose a named reporting zone or use `instant.UTC()` for a UTC date. For a zoned civil day and an unambiguous clock reading, `day.At(clock)` gives the timestamp in that day's zone. `Timing.LocationDate()` returns the event's date and zone.
+For a zoned civil day and an unambiguous clock reading, `day.At(clock)` gives the timestamp in that day's zone. `Timing.LocationDate()` returns the event's date and zone.
 
 - A flag is what the source states about the regular session of the event's own market: for a company event, the market its stock trades on. It is kept and never worked out.
 - For an exact instant, `TradingCalendar.SessionAt` reports the active session, taking holidays and early closes into account. `TradingCalendar.DayAt` returns the trading day that owns an open session. An overnight session can belong to the following date. [Trading calendars](../calendar)

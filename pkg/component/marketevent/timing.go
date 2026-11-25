@@ -29,27 +29,10 @@ type Timing struct {
 	flag *Flag
 }
 
-// NewExactTiming returns the instant t dated in its own named time zone.
-// It returns an error if t is zero, [civil.NewLocationDate] rejects its
-// zone name, or its offset disagrees with the named zone at t.
+// NewExactTiming returns the instant t and its calendar date in t's location.
+// It returns an error if t is the zero time.
 func NewExactTiming(t time.Time) (Timing, error) {
-	day, err := civil.NewLocationDate(civil.NewDateFromTime(t), t.Location().String())
-	if err != nil {
-		return Timing{}, fmt.Errorf("invalid exact timing %s: %w", t, err)
-	}
-
-	// A fixed zone can borrow an IANA name while using a different offset.
-	instant := t.In(day.Location())
-	_, sourceOffsetSeconds := t.Zone()
-	_, zoneOffsetSeconds := instant.Zone()
-	if sourceOffsetSeconds != zoneOffsetSeconds {
-		return Timing{}, fmt.Errorf(
-			"invalid exact timing %s: UTC offset %d seconds disagrees with %s (%d seconds)",
-			t, sourceOffsetSeconds, day.Location(), zoneOffsetSeconds,
-		)
-	}
-
-	timing := Timing{locationDate: day, instant: &instant}
+	timing := Timing{locationDate: civil.NewLocationDateFromTime(t), instant: &t}
 	if err := timing.validate(); err != nil {
 		return Timing{}, fmt.Errorf("invalid exact timing %s: %w", t, err)
 	}

@@ -39,23 +39,28 @@ func TestNewExactTiming(t *testing.T) {
 
 	// 01:30 UTC on February 5 is 20:30 on February 4 in New York.
 	at := time.Date(2021, time.February, 5, 1, 30, 0, 123, time.UTC)
+	utcDay := mustLocationDate(t, "2021-02-05", "UTC")
 	previous := mustLocationDate(t, "2021-02-04", newYork)
 	repeated := mustLocationDate(t, "2021-11-07", newYork)
-	nextYear, err := civil.NewLocationDate(mustDate(t, "9999-12-31").AddDays(1), "UTC")
-	require.NoError(t, err)
+	unnamed := previous.Date().In(time.FixedZone("", -5*60*60))
+	custom := previous.Date().In(time.FixedZone("Desk", -5*60*60))
+	fixedNewYork := utcDay.Date().In(time.FixedZone(newYork, 9*60*60))
 
 	tests := []struct {
 		name    string
 		at      time.Time
 		wantDay civil.LocationDate
 	}{
-		{name: "UTC", at: at, wantDay: mustLocationDate(t, "2021-02-05", "UTC")},
+		{name: "UTC", at: at, wantDay: utcDay},
 		{name: "a day earlier in New York", at: at.In(previous.Location()), wantDay: previous},
-		{name: "named fixed zone with the correct offset", at: at.In(time.FixedZone(newYork, -5*60*60)), wantDay: previous},
+		{name: "machine-local time", at: time.Date(2021, time.February, 5, 12, 0, 0, 0, time.Local), wantDay: utcDay.Date().In(time.Local)},
+		{name: "numeric offset alone", at: at.In(unnamed.Location()), wantDay: unnamed},
+		{name: "custom zone name", at: at.In(custom.Location()), wantDay: custom},
+		{name: "fixed offset with an IANA name", at: at.In(fixedNewYork.Location()), wantDay: fixedNewYork},
 		// Both occurrences of 01:30 have the same local date and clock time.
 		{name: "first 01:30", at: time.Date(2021, time.November, 7, 5, 30, 0, 0, time.UTC).In(repeated.Location()), wantDay: repeated},
 		{name: "second 01:30", at: time.Date(2021, time.November, 7, 6, 30, 0, 0, time.UTC).In(repeated.Location()), wantDay: repeated},
-		{name: "year 10000", at: time.Date(10000, time.January, 1, 0, 0, 0, 0, time.UTC), wantDay: nextYear},
+		{name: "year 10000", at: time.Date(10000, time.January, 1, 0, 0, 0, 0, time.UTC), wantDay: mustDate(t, "9999-12-31").AddDays(1).In(time.UTC)},
 	}
 
 	for _, tt := range tests {
@@ -68,10 +73,10 @@ func TestNewExactTiming(t *testing.T) {
 			instant, exact := timing.Instant()
 			require.True(t, exact)
 			assert.True(t, instant.Equal(tt.at))
-			assert.Equal(t, tt.at.Format(time.RFC3339Nano), instant.Format(time.RFC3339Nano))
+			assert.Same(t, tt.at.Location(), instant.Location())
+			assert.Same(t, tt.at.Location(), timing.Location())
 			assert.True(t, tt.wantDay.Equal(timing.LocationDate()))
 			assert.Equal(t, tt.wantDay.Date(), timing.Date())
-			assert.Same(t, timing.Location(), instant.Location())
 			assert.True(t, timing.IsValid())
 
 			_, flagged := timing.Flag()
@@ -80,51 +85,12 @@ func TestNewExactTiming(t *testing.T) {
 	}
 }
 
-func TestNewExactTimingLocal(t *testing.T) {
+func TestNewExactTimingRejectsZero(t *testing.T) {
 	t.Parallel()
 
-	at := time.Date(2021, time.February, 5, 12, 0, 0, 0, time.Local)
-	want, zoneErr := civil.NewLocationDate(mustDate(t, "2021-02-05"), time.Local.String())
-	timing, err := marketevent.NewExactTiming(at)
-	if zoneErr != nil {
-		require.ErrorContains(t, err, zoneErr.Error())
-
-		return
-	}
-
-	require.NoError(t, err)
-	assert.True(t, want.Equal(timing.LocationDate()))
-}
-
-func TestNewExactTimingRejects(t *testing.T) {
-	t.Parallel()
-
-	at := time.Date(2021, time.February, 5, 17, 30, 0, 0, time.UTC)
-
-	tests := []struct {
-		name    string
-		at      time.Time
-		wantErr string
-	}{
-		{name: "zero time", wantErr: "instant is missing"},
-		{name: "numeric offset alone", at: at.In(time.FixedZone("", -5*60*60)), wantErr: "zone must not be empty"},
-		{name: "unknown zone name", at: at.In(time.FixedZone("Unknown/Zone", 0)), wantErr: "invalid zone"},
-		{
-			name:    "wrong offset for the named zone on the same date",
-			at:      at.In(time.FixedZone(newYork, -4*60*60)),
-			wantErr: "disagrees with America/New_York",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			timing, err := marketevent.NewExactTiming(tt.at)
-			require.ErrorContains(t, err, tt.wantErr)
-			assert.False(t, timing.IsValid())
-		})
-	}
+	timing, err := marketevent.NewExactTiming(time.Time{})
+	require.ErrorContains(t, err, "instant is missing")
+	assert.False(t, timing.IsValid())
 }
 
 func TestNewDateTimings(t *testing.T) {
