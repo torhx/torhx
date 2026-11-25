@@ -3,7 +3,6 @@ package marketevent_test
 import (
 	"math"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -40,7 +39,10 @@ func mustTimings(t *testing.T) timings {
 	afterMarket, err := marketevent.NewAfterMarketTiming(day)
 	require.NoError(t, err)
 
-	exact, err := marketevent.NewExactTiming(time.Date(2021, time.February, 5, 16, 5, 0, 0, day.Location()), day)
+	clock, err := civil.NewTime(16, 5, 0, 0)
+	require.NoError(t, err)
+
+	exact, err := marketevent.NewExactTiming(day.At(clock))
 	require.NoError(t, err)
 
 	return timings{

@@ -30,16 +30,32 @@ type Timing struct {
 	flag *Flag
 }
 
-// NewExactTiming returns the timing of the instant t on day, shown in
-// day's time zone. It returns an error if either value is missing or if
-// the instant falls on a different date in that zone.
-func NewExactTiming(t time.Time, day civil.LocationDate) (Timing, error) {
-	// A missing day has no location to pass to time.Time.In.
-	if day.IsValid() {
-		t = t.In(day.Location())
+// NewExactTiming returns the instant t dated in its own named time zone.
+// It returns an error for the zero instant, [time.Local], an unnamed or
+// unknown zone, or an offset that disagrees with the named zone at t.
+func NewExactTiming(t time.Time) (Timing, error) {
+	// time.Local can report a different IANA name on each machine.
+	if t.Location() == time.Local {
+		return Timing{}, errors.New("invalid exact timing: instant uses the machine's local time zone")
 	}
 
-	timing := Timing{locationDate: day, instant: &t}
+	day, err := civil.NewLocationDate(civil.NewDateFromTime(t), t.Location().String())
+	if err != nil {
+		return Timing{}, fmt.Errorf("invalid exact timing %s: %w", t, err)
+	}
+
+	// A fixed zone can borrow an IANA name while using a different offset.
+	instant := t.In(day.Location())
+	_, sourceOffsetSeconds := t.Zone()
+	_, zoneOffsetSeconds := instant.Zone()
+	if sourceOffsetSeconds != zoneOffsetSeconds {
+		return Timing{}, fmt.Errorf(
+			"invalid exact timing %s: UTC offset %d seconds disagrees with %s (%d seconds)",
+			t, sourceOffsetSeconds, day.Location(), zoneOffsetSeconds,
+		)
+	}
+
+	timing := Timing{locationDate: day, instant: &instant}
 	if err := timing.validate(); err != nil {
 		return Timing{}, fmt.Errorf("invalid exact timing %s: %w", t, err)
 	}
@@ -57,17 +73,7 @@ func NewExactTimingForExchange(t time.Time, venue exchange.Exchange) (Timing, er
 		return Timing{}, errors.New("invalid exact timing: exchange is missing")
 	}
 
-	// time.Local can report a different IANA name on each machine.
-	if venue.Location() == time.Local {
-		return Timing{}, fmt.Errorf("invalid exact timing on %s: exchange uses the machine's local time zone", venue)
-	}
-
-	day, err := civil.NewLocationDate(venue.DateOf(t), venue.TimeZone())
-	if err != nil {
-		return Timing{}, fmt.Errorf("date instant %s on %s: %w", t, venue, err)
-	}
-
-	return NewExactTiming(t, day)
+	return NewExactTiming(t.In(venue.Location()))
 }
 
 // NewDateTiming returns the timing of day, a date in a zone, without a flag.
@@ -147,16 +153,8 @@ func (t Timing) validate() error {
 		return errors.New("date is missing")
 	}
 
-	if t.instant == nil {
-		return nil
-	}
-
-	if t.instant.IsZero() {
+	if t.instant != nil && t.instant.IsZero() {
 		return errors.New("instant is missing")
-	}
-
-	if date := civil.NewDateFromTime(*t.instant); date != t.Date() {
-		return fmt.Errorf("instant falls on %s in %s, want %s", date, t.Location(), t.Date())
 	}
 
 	return nil

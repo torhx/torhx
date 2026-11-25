@@ -9,10 +9,11 @@
 // the three methods of [Event] itself, or embeds [EconomicEvent] or
 // [CompanyEvent] and adds fields.
 //
-// Every [Timing] carries a [civil.LocationDate] in the event source's time
-// zone. An exact timing also carries its instant. A date alone may carry a
-// [Flag] when the source states that the event comes before the market opens
-// or after it closes. The exchange's trading calendar supplies session hours.
+// Every [Timing] carries a [civil.LocationDate]. [NewExactTiming] dates an
+// instant in the timestamp's own zone. [NewExactTimingForExchange] dates it
+// in the venue's zone. A date alone may carry a [Flag] when the source states
+// that the event comes before the market opens or after it closes. The
+// exchange's trading calendar supplies session hours.
 //
 // [Events] holds the events a program loads and their coverage as a half-open
 // [civil.DateRange]. [Events.During] narrows coverage to the shared dates.

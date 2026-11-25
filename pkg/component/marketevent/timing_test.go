@@ -46,38 +46,33 @@ func TestNewExactTiming(t *testing.T) {
 	require.NoError(t, err)
 
 	tests := []struct {
-		name string
-		at   time.Time
-		day  civil.LocationDate
+		name    string
+		at      time.Time
+		wantDay civil.LocationDate
 	}{
-		{name: "UTC", at: at, day: mustLocationDate(t, "2021-02-05", "UTC")},
-		{name: "a day earlier in New York", at: at, day: previous},
-		{name: "instant supplied in another zone", at: at.In(time.FixedZone("JST", 9*60*60)), day: previous},
-		// New York shows 01:30 twice as daylight saving time ends.
-		{name: "first 01:30", at: time.Date(2021, time.November, 7, 5, 30, 0, 0, time.UTC), day: repeated},
-		{name: "second 01:30", at: time.Date(2021, time.November, 7, 6, 30, 0, 0, time.UTC), day: repeated},
-		{
-			name: "year 10000",
-			at:   time.Date(10000, time.January, 1, 0, 0, 0, 0, time.UTC),
-			day:  nextYear,
-		},
+		{name: "UTC", at: at, wantDay: mustLocationDate(t, "2021-02-05", "UTC")},
+		{name: "a day earlier in New York", at: at.In(previous.Location()), wantDay: previous},
+		{name: "named fixed zone with the correct offset", at: at.In(time.FixedZone(newYork, -5*60*60)), wantDay: previous},
+		// Both occurrences of 01:30 have the same local date and clock time.
+		{name: "first 01:30", at: time.Date(2021, time.November, 7, 5, 30, 0, 0, time.UTC).In(repeated.Location()), wantDay: repeated},
+		{name: "second 01:30", at: time.Date(2021, time.November, 7, 6, 30, 0, 0, time.UTC).In(repeated.Location()), wantDay: repeated},
+		{name: "year 10000", at: time.Date(10000, time.January, 1, 0, 0, 0, 0, time.UTC), wantDay: nextYear},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			timing, err := marketevent.NewExactTiming(tt.at, tt.day)
+			timing, err := marketevent.NewExactTiming(tt.at)
 			require.NoError(t, err)
 
 			instant, exact := timing.Instant()
 			require.True(t, exact)
-
 			assert.True(t, instant.Equal(tt.at))
-			assert.Equal(t, tt.day.Location(), instant.Location())
-			assert.Equal(t, tt.day.Date(), timing.Date())
-			assert.Equal(t, tt.day.Location(), timing.Location())
-			assert.True(t, tt.day.Equal(timing.LocationDate()))
+			assert.Equal(t, tt.at.Format(time.RFC3339Nano), instant.Format(time.RFC3339Nano))
+			assert.True(t, tt.wantDay.Equal(timing.LocationDate()))
+			assert.Equal(t, tt.wantDay.Date(), timing.Date())
+			assert.Same(t, timing.Location(), instant.Location())
 			assert.True(t, timing.IsValid())
 
 			_, flagged := timing.Flag()
@@ -89,21 +84,21 @@ func TestNewExactTiming(t *testing.T) {
 func TestNewExactTimingRejects(t *testing.T) {
 	t.Parallel()
 
-	at := time.Date(2021, time.February, 5, 1, 30, 0, 0, time.UTC)
+	at := time.Date(2021, time.February, 5, 17, 30, 0, 0, time.UTC)
 
 	tests := []struct {
 		name    string
 		at      time.Time
-		day     civil.LocationDate
 		wantErr string
 	}{
-		{name: "zero time", day: mustLocationDate(t, "0001-01-01", newYork), wantErr: "instant is missing"},
-		{name: "missing day", at: at, wantErr: "date is missing"},
+		{name: "zero time", wantErr: "instant is missing"},
+		{name: "machine-local time", at: at.In(time.Local), wantErr: "machine's local time zone"},
+		{name: "numeric offset alone", at: at.In(time.FixedZone("", -5*60*60)), wantErr: "zone must not be empty"},
+		{name: "unknown zone name", at: at.In(time.FixedZone("Unknown/Zone", 0)), wantErr: "invalid zone"},
 		{
-			name:    "UTC date differs from the event date in New York",
-			at:      at,
-			day:     mustLocationDate(t, "2021-02-05", newYork),
-			wantErr: "instant falls on 2021-02-04 in America/New_York, want 2021-02-05",
+			name:    "wrong offset for the named zone on the same date",
+			at:      at.In(time.FixedZone(newYork, -4*60*60)),
+			wantErr: "disagrees with America/New_York",
 		},
 	}
 
@@ -111,8 +106,9 @@ func TestNewExactTimingRejects(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := marketevent.NewExactTiming(tt.at, tt.day)
+			timing, err := marketevent.NewExactTiming(tt.at)
 			require.ErrorContains(t, err, tt.wantErr)
+			assert.False(t, timing.IsValid())
 		})
 	}
 }
@@ -136,6 +132,7 @@ func TestNewExactTimingForExchange(t *testing.T) {
 		wantErr string
 	}{
 		{name: "previous date in New York", at: at, venue: xnys, date: "2021-02-04"},
+		{name: "timestamp with only a numeric offset", at: at.In(time.FixedZone("", 9*60*60)), venue: xnys, date: "2021-02-04"},
 		{name: "Saturday in Tokyo", at: at.Add(22 * time.Hour), venue: xtks, date: "2021-02-06"},
 		{name: "missing exchange", at: at, wantErr: "exchange is missing"},
 		{name: "machine-local exchange", at: at, venue: local, wantErr: "machine's local time zone"},
