@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/talav/civil"
 	"github.com/torhx/identifier"
 )
 
@@ -67,8 +68,8 @@ type Dividend struct {
 	// stock is the composite FIGI of the stock the dividend is paid on.
 	stock identifier.FIGI
 
-	// timing is the ex-date: a date without a flag.
-	timing Timing
+	// exDate is the local date on which the stock first trades ex-dividend.
+	exDate civil.LocationDate
 
 	// amount is the amount per share, in the currency of the stock's price.
 	// It is positive and finite.
@@ -76,12 +77,12 @@ type Dividend struct {
 }
 
 // NewDividend returns the dividend on stock, by its composite FIGI, going ex
-// at timing, of amount per share in the currency of the stock's price.
+// on exDate. The amount per share is in the currency of the stock's price.
 //
-// It returns an error if stock or timing is the zero value, if timing is
-// exact or has a flag, or if amount is not positive or not finite.
-func NewDividend(stock identifier.FIGI, timing Timing, amount float64) (Dividend, error) {
-	d := Dividend{stock: stock, timing: timing, amount: amount}
+// It returns an error if stock or exDate is missing, or if amount is
+// nonpositive, infinite, or NaN.
+func NewDividend(stock identifier.FIGI, exDate civil.LocationDate, amount float64) (Dividend, error) {
+	d := Dividend{stock: stock, exDate: exDate, amount: amount}
 	if err := d.validate(); err != nil {
 		return Dividend{}, fmt.Errorf("invalid dividend: %w", err)
 	}
@@ -96,7 +97,7 @@ func (d Dividend) Stock() identifier.FIGI { return d.stock }
 func (d Dividend) Subject() Subject { return Subject{stock: d.stock} }
 
 // Timing returns the ex-date.
-func (d Dividend) Timing() Timing { return d.timing }
+func (d Dividend) Timing() Timing { return Timing{locationDate: d.exDate} }
 
 // Kind returns "dividend".
 func (d Dividend) Kind() string { return "dividend" }
@@ -109,8 +110,8 @@ func (d Dividend) validate() error {
 		return errors.New("stock is missing")
 	}
 
-	if err := validateExDate(d.timing); err != nil {
-		return err
+	if !d.exDate.IsValid() {
+		return errors.New("ex-date is missing")
 	}
 
 	if math.IsNaN(d.amount) || math.IsInf(d.amount, 0) || d.amount <= 0 {
@@ -128,22 +129,21 @@ type Split struct {
 	// stock is the composite FIGI of the stock that splits.
 	stock identifier.FIGI
 
-	// timing is the ex-date: a date without a flag.
-	timing Timing
+	// exDate is the local date on which the split takes effect.
+	exDate civil.LocationDate
 
 	// factor is the number that prices before the ex-date are multiplied
 	// by, 0.25 for a four-for-one split. It is positive, finite and not 1.
 	factor float64
 }
 
-// NewSplit returns the split of stock, by its composite FIGI, going ex at
-// timing, by factor: the number that prices before the ex-date are
-// multiplied by, 0.25 for a four-for-one split.
+// NewSplit returns the split of stock, by its composite FIGI, going ex on
+// exDate. Earlier prices are multiplied by factor, 0.25 for a four-for-one split.
 //
-// It returns an error if stock or timing is the zero value, if timing is
-// exact or has a flag, or if factor is not positive, not finite, or 1.
-func NewSplit(stock identifier.FIGI, timing Timing, factor float64) (Split, error) {
-	s := Split{stock: stock, timing: timing, factor: factor}
+// It returns an error if stock or exDate is missing, or if factor is
+// nonpositive, infinite, NaN, or one.
+func NewSplit(stock identifier.FIGI, exDate civil.LocationDate, factor float64) (Split, error) {
+	s := Split{stock: stock, exDate: exDate, factor: factor}
 	if err := s.validate(); err != nil {
 		return Split{}, fmt.Errorf("invalid split: %w", err)
 	}
@@ -158,7 +158,7 @@ func (s Split) Stock() identifier.FIGI { return s.stock }
 func (s Split) Subject() Subject { return Subject{stock: s.stock} }
 
 // Timing returns the ex-date.
-func (s Split) Timing() Timing { return s.timing }
+func (s Split) Timing() Timing { return Timing{locationDate: s.exDate} }
 
 // Kind returns "split".
 func (s Split) Kind() string { return "split" }
@@ -172,8 +172,8 @@ func (s Split) validate() error {
 		return errors.New("stock is missing")
 	}
 
-	if err := validateExDate(s.timing); err != nil {
-		return err
+	if !s.exDate.IsValid() {
+		return errors.New("ex-date is missing")
 	}
 
 	if math.IsNaN(s.factor) || math.IsInf(s.factor, 0) || s.factor <= 0 {
@@ -182,24 +182,6 @@ func (s Split) validate() error {
 
 	if s.factor == 1 {
 		return errors.New("factor 1 changes no price")
-	}
-
-	return nil
-}
-
-// validateExDate returns an error unless timing is a date without a flag: a
-// stock goes ex at the open of a date, so an ex-date has no time of day.
-func validateExDate(timing Timing) error {
-	if !timing.IsValid() {
-		return errors.New("timing is missing")
-	}
-
-	if _, exact := timing.Instant(); exact {
-		return errors.New("ex-date is an exact time, not a date")
-	}
-
-	if flag, flagged := timing.Flag(); flagged {
-		return fmt.Errorf("ex-date has the flag %s", flag)
 	}
 
 	return nil

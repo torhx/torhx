@@ -1,6 +1,7 @@
 package marketevent
 
 import (
+	"errors"
 	"fmt"
 	"iter"
 	"slices"
@@ -30,29 +31,25 @@ type Events struct {
 	// bySubject holds the events in order of subject, then date, so that the
 	// events about one subject are a run in date order. After narrowing by
 	// date it also holds the events that narrowing left out, which are all
-	// dated outside from to to.
+	// dated outside coverage.
 	bySubject []Event
 
-	// from is the first date the events cover. It is the zero date only in
-	// the zero value.
-	from civil.Date
-
-	// to is the last date the events cover, never before from. It is the
-	// zero date only in the zero value.
-	to civil.Date
+	// coverage is the half-open range of dates the collection covers.
+	// A zero range means the collection covers no dates.
+	coverage civil.DateRange
 }
 
-// NewEvents returns the Events of events, which cover the dates from from
-// to to. It sorts events in place and keeps the slice, so the caller must
-// not change it afterwards. Events of the same date and subject keep the
-// order they are given in, and an event given twice is kept twice.
+// NewEvents builds a collection for the given half-open coverage range.
+// It sorts events in place and keeps the slice. Events with the same date
+// and subject keep their input order, including duplicates. The caller
+// must leave the slice unchanged after construction.
 //
-// It returns an error if from or to is the zero date, if from is after to,
-// or if an event is a nil interface, has the zero timing or subject or an
-// empty kind, or is dated outside from to to. A typed nil pointer is not
-// supported, and its methods may panic.
-func NewEvents(events []Event, from, to civil.Date) (Events, error) {
-	es := Events{byDate: events, from: from, to: to}
+// It returns an error if coverage is the zero range, or if an event is a nil
+// interface, has the zero timing or subject or an empty kind, or is dated
+// outside coverage. A typed nil pointer is not supported, and its methods
+// may panic.
+func NewEvents(events []Event, coverage civil.DateRange) (Events, error) {
+	es := Events{byDate: events, coverage: coverage}
 	if err := es.validate(); err != nil {
 		return Events{}, fmt.Errorf("invalid events: %w", err)
 	}
@@ -63,9 +60,9 @@ func NewEvents(events []Event, from, to civil.Date) (Events, error) {
 	return es, nil
 }
 
-// Coverage returns the first and the last date the events cover. An Events
-// that covers no date, as the zero value does, returns two zero dates.
-func (es Events) Coverage() (from, to civil.Date) { return es.from, es.to }
+// Coverage returns the dates the events cover, including the start and
+// excluding the end. It returns the zero range when no dates are covered.
+func (es Events) Coverage() civil.DateRange { return es.coverage }
 
 // For returns the events about subject. Narrowing twice keeps the events
 // about both subjects, so For(us).For(ca) holds none, and so does For with
@@ -80,32 +77,44 @@ func (es Events) For(subject Subject) Events {
 
 	// The events about one subject are in date order, which is both orders
 	// at once.
-	about := dated(es.bySubject[start:end], es.from, es.to)
+	about := dated(es.bySubject[start:end], es.coverage)
 
-	return Events{byDate: about, bySubject: about, from: es.from, to: es.to}
+	return Events{byDate: about, bySubject: about, coverage: es.coverage}
 }
 
 // On returns the events of date. The result covers that date alone, or no
 // date when this Events does not cover it.
-func (es Events) On(date civil.Date) Events { return es.Between(date, date) }
-
-// Between returns the events dated from from to to, both included. The
-// result covers those of the dates that this Events covers, and no date when
-// there is none, as when from is after to.
-func (es Events) Between(from, to civil.Date) Events {
-	if from.Before(es.from) {
-		from = es.from
-	}
-
-	if to.After(es.to) {
-		to = es.to
-	}
-
-	if from.After(to) {
+func (es Events) On(date civil.Date) Events {
+	if !date.IsValid() || !es.coverage.IsValid() || !es.coverage.ContainsDate(date) {
 		return Events{}
 	}
 
-	return Events{byDate: dated(es.byDate, from, to), bySubject: es.bySubject, from: from, to: to}
+	day, err := civil.NewDateRange(date, date.AddDays(1))
+	if err != nil {
+		return Events{}
+	}
+
+	return es.withCoverage(day)
+}
+
+// During returns the events in the intersection of dates and the collection's
+// coverage. A missing range or a disjoint range yields an empty collection
+// with zero coverage.
+func (es Events) During(dates civil.DateRange) Events {
+	if !es.coverage.IsValid() || !dates.IsValid() {
+		return Events{}
+	}
+
+	if dates.Contains(es.coverage) {
+		return es
+	}
+
+	coverage, ok := es.coverage.Intersect(dates)
+	if !ok {
+		return Events{}
+	}
+
+	return es.withCoverage(coverage)
 }
 
 // OfKind returns the events of any of kinds, or every event when kinds is
@@ -124,7 +133,7 @@ func (es Events) OfKind(kinds ...string) Events {
 		}
 	}
 
-	return Events{byDate: ofKind, bySubject: sortedBySubject(ofKind), from: es.from, to: es.to}
+	return Events{byDate: ofKind, bySubject: sortedBySubject(ofKind), coverage: es.coverage}
 }
 
 // Has reports whether there is an event of any of kinds, or any event at all
@@ -161,10 +170,9 @@ func (es Events) Of[T Event]() iter.Seq[T] {
 	}
 }
 
-//nolint:cyclop // one flat list of checks reads better than a split
 func (es Events) validate() error {
-	if !es.from.IsValid() || !es.to.IsValid() || es.from.After(es.to) {
-		return fmt.Errorf("dates %s to %s are not a range", es.from, es.to)
+	if !es.coverage.IsValid() {
+		return errors.New("coverage is missing")
 	}
 
 	for i, e := range es.byDate {
@@ -185,12 +193,18 @@ func (es Events) validate() error {
 			return fmt.Errorf("event %d has no kind", i)
 		}
 
-		if date := timing.Date(); date.Before(es.from) || date.After(es.to) {
-			return fmt.Errorf("event %d is dated %s, outside %s to %s", i, date, es.from, es.to)
+		if date := timing.Date(); !es.coverage.ContainsDate(date) {
+			return fmt.Errorf("event %d is dated %s, outside %s", i, date, es.coverage)
 		}
 	}
 
 	return nil
+}
+
+// withCoverage narrows the date index to a range within the current coverage.
+// For applies the same bounds when it reads the shared subject index.
+func (es Events) withCoverage(coverage civil.DateRange) Events {
+	return Events{byDate: dated(es.byDate, coverage), bySubject: es.bySubject, coverage: coverage}
 }
 
 // sortedBySubject returns a copy of byDate, which is in order of date, in
@@ -203,17 +217,16 @@ func sortedBySubject(byDate []Event) []Event {
 	return bySubject
 }
 
-// dated returns the part of events, which are in order of date, that is
-// dated from from to to, both included. from is not after to.
-func dated(events []Event, from, to civil.Date) []Event {
-	start := sort.Search(len(events), func(i int) bool {
-		return !events[i].Timing().Date().Before(from)
-	})
-	end := sort.Search(len(events), func(i int) bool {
-		return events[i].Timing().Date().After(to)
-	})
+// dated returns the slice of date-ordered events in dates. Both bounds are
+// the first event on or after their respective endpoint.
+func dated(events []Event, dates civil.DateRange) []Event {
+	lowerBound := func(date civil.Date) int {
+		return sort.Search(len(events), func(i int) bool {
+			return !events[i].Timing().Date().Before(date)
+		})
+	}
 
-	return events[start:end]
+	return events[lowerBound(dates.Start()):lowerBound(dates.End())]
 }
 
 // compareByDate orders events by date, then by subject.

@@ -9,13 +9,14 @@
 // the three methods of [Event] itself, or embeds [EconomicEvent] or
 // [CompanyEvent] and adds fields.
 //
-// A [Timing] is an exact instant, or a date that may carry a [Flag] for
-// before the market opens or after it closes. A flag is what the event's
-// source states. Nothing here knows a market's hours, so nothing here works
-// out whether an instant comes before an open.
+// Every [Timing] carries a [civil.LocationDate]. [NewExactTiming] dates an
+// instant in the timestamp's own zone. A date alone may carry a [Flag] when
+// the source states that the event comes before the market opens or after it
+// closes.
 //
-// [Events] is the collection of the events a program loads, and the dates it
-// covers. Narrowing it by subject, by date or by kind gives an Events again.
+// [Events] holds the events a program loads and their coverage as a half-open
+// [civil.DateRange]. [Events.During] narrows coverage to the shared dates.
+// Narrowing by subject, date or kind gives an Events again.
 // Its reads say whether it has events, list them, and take the events of one
 // type out as that type.
 //
